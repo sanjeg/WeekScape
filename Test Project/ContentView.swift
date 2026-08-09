@@ -1,24 +1,44 @@
 //
 //  ContentView.swift
-//  Test Project
+//  Weekend Planner
 //
-//  Created by Sanjeev Garg on 8/8/26.
+//  Root scene: the week stream plus access to Settings / standard pages.
 //
 
 import SwiftUI
+import SwiftData
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var context
+    @State private var showingSettings = false
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        NavigationStack {
+            WeekListView()
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            showingSettings = true
+                        } label: {
+                            Image(systemName: "gearshape")
+                        }
+                        .accessibilityLabel("Settings")
+                    }
+                }
         }
-        .padding()
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
+        }
+        .onAppear {
+            SampleData.seedIfNeeded(in: context)
+        }
     }
 }
 
 #Preview {
-    ContentView()
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(for: Plan.self, configurations: config)
+    SampleData.insertSamples(in: container.mainContext)
+    return ContentView()
+        .modelContainer(container)
 }
