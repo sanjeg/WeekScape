@@ -1,6 +1,6 @@
 //
-//  Test_ProjectApp.swift
-//  Weekend Planner
+//  WeekScapeApp.swift
+//  WeekScape
 //
 //  App entry point. Builds a SwiftData ModelContainer that syncs via iCloud
 //  (CloudKit) when the iCloud capability is configured, and transparently falls
@@ -11,7 +11,7 @@ import SwiftUI
 import SwiftData
 
 @main
-struct WeekendPlannerApp: App {
+struct WeekScapeApp: App {
     let modelContainer: ModelContainer
 
     /// Whether the active container is backed by CloudKit (surfaced in Settings).

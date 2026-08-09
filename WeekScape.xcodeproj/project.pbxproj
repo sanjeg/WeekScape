@@ -7,13 +7,13 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		A5E8F2FA3027F3B70038A68B /* Test Project.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Test Project.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A5E8F2FA3027F3B70038A68B /* WeekScape.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WeekScape.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A5E8F2FC3027F3B70038A68B /* Test Project */ = {
+		A5E8F2FC3027F3B70038A68B /* WeekScape */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Test Project";
+			path = WeekScape;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -32,7 +32,7 @@
 		A5E8F2F13027F3B70038A68B = {
 			isa = PBXGroup;
 			children = (
-				A5E8F2FC3027F3B70038A68B /* Test Project */,
+				A5E8F2FC3027F3B70038A68B /* WeekScape */,
 				A5E8F2FB3027F3B70038A68B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -40,7 +40,7 @@
 		A5E8F2FB3027F3B70038A68B /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A5E8F2FA3027F3B70038A68B /* Test Project.app */,
+				A5E8F2FA3027F3B70038A68B /* WeekScape.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,9 +48,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A5E8F2F93027F3B70038A68B /* Test Project */ = {
+		A5E8F2F93027F3B70038A68B /* WeekScape */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A5E8F3053027F3B80038A68B /* Build configuration list for PBXNativeTarget "Test Project" */;
+			buildConfigurationList = A5E8F3053027F3B80038A68B /* Build configuration list for PBXNativeTarget "WeekScape" */;
 			buildPhases = (
 				A5E8F2F63027F3B70038A68B /* Sources */,
 				A5E8F2F73027F3B70038A68B /* Frameworks */,
@@ -61,13 +61,13 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				A5E8F2FC3027F3B70038A68B /* Test Project */,
+				A5E8F2FC3027F3B70038A68B /* WeekScape */,
 			);
-			name = "Test Project";
+			name = WeekScape;
 			packageProductDependencies = (
 			);
 			productName = "Test Project";
-			productReference = A5E8F2FA3027F3B70038A68B /* Test Project.app */;
+			productReference = A5E8F2FA3027F3B70038A68B /* WeekScape.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -85,7 +85,7 @@
 					};
 				};
 			};
-			buildConfigurationList = A5E8F2F53027F3B70038A68B /* Build configuration list for PBXProject "Test Project" */;
+			buildConfigurationList = A5E8F2F53027F3B70038A68B /* Build configuration list for PBXProject "WeekScape" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -99,7 +99,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A5E8F2F93027F3B70038A68B /* Test Project */,
+				A5E8F2F93027F3B70038A68B /* WeekScape */,
 			);
 		};
 /* End PBXProject section */
@@ -315,7 +315,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A5E8F2F53027F3B70038A68B /* Build configuration list for PBXProject "Test Project" */ = {
+		A5E8F2F53027F3B70038A68B /* Build configuration list for PBXProject "WeekScape" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A5E8F3033027F3B80038A68B /* Debug */,
@@ -324,7 +324,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A5E8F3053027F3B80038A68B /* Build configuration list for PBXNativeTarget "Test Project" */ = {
+		A5E8F3053027F3B80038A68B /* Build configuration list for PBXNativeTarget "WeekScape" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A5E8F3063027F3B80038A68B /* Debug */,
