@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeekScape — Support</title>
+<meta name="description" content="Support page for WeekScape, the week-based planner for iPhone and iPad.">
+<style>
+  :root {
+    --accent-start: #3B82F6;
+    --accent-end: #8B5CF6;
+    --bg: #F7F8FC;
+    --surface: #FFFFFF;
+    --text: #1C1C2E;
+    --text-secondary: #5B5B72;
+    --border: rgba(59, 130, 246, 0.15);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101018;
+      --surface: #1A1A26;
+      --text: #F2F2F7;
+      --text-secondary: #A0A0B4;
+      --border: rgba(139, 92, 246, 0.25);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+  .brand {
+    font-size: 2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: -0.02em;
+  }
+  .tagline {
+    color: var(--text-secondary);
+    font-size: 1rem;
+    margin-top: 4px;
+  }
+  section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 24px;
+    margin-top: 16px;
+  }
+  h2 {
+    font-size: 1.05rem;
+    margin: 0 0 8px;
+  }
+  section p {
+    margin: 0 0 8px;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+  }
+  section p:last-child { margin-bottom: 0; }
+  a {
+    color: var(--accent-start);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  a:hover { text-decoration: underline; }
+  details {
+    margin-top: 8px;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+  }
+  summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text);
+  }
+  details p { margin: 8px 0 0; }
+  footer {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    margin-top: 48px;
+  }
+  footer a { font-weight: 400; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">WeekScape</div>
+    <div class="tagline">Plan by the week, not the hour.</div>
+  </header>
+
+  <section>
+    <h2>About</h2>
+    <p>WeekScape is a planner for iPhone and iPad built around the week as the fundamental unit of time. Drop plans into whichever week fits, pin a day only when it matters, and drag things around as life shifts. Your plans sync privately through your own iCloud account.</p>
+  </section>
+
+  <section>
+    <h2>Frequently asked questions</h2>
+    <details>
+      <summary>How does iCloud sync work?</summary>
+      <p>If your device is signed into iCloud with iCloud Drive enabled, plans sync automatically across your devices. You can check the sync status in the app under Settings &rarr; Storage. Without iCloud, plans are stored on your device only.</p>
+    </details>
+    <details>
+      <summary>How do I move a plan to another week?</summary>
+      <p>Press and hold a plan, then drag it onto another week card. You can also open the plan and pick a different week in the editor.</p>
+    </details>
+    <details>
+      <summary>How do I delete a plan?</summary>
+      <p>Swipe the plan to the left and tap the delete button, or swipe all the way across to delete in one motion. You can also delete from the plan editor.</p>
+    </details>
+    <details>
+      <summary>Can I start my week on Sunday?</summary>
+      <p>Yes — in the app, open Settings and switch &ldquo;Start week on&rdquo; between Sunday and Monday.</p>
+    </details>
+  </section>
+
+  <section>
+    <h2>Contact</h2>
+    <p>Found a bug or have a feature request? Reach out through the App Store listing for WeekScape — reviews and the developer contact link both reach us.</p>
+  </section>
+
+  <footer>
+    &copy; 2026 WeekScape &middot; <a href="privacy.html">Privacy Policy</a>
+  </footer>
+</div>
+</body>
+</html>
