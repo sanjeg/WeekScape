@@ -107,7 +107,8 @@ struct WeekCardView: View {
                     PlanRowView(
                         plan: plan,
                         onToggleDone: { toggleDone(plan) },
-                        onOpen: { onEdit(plan) }
+                        onOpen: { onEdit(plan) },
+                        onDelete: { PlanActions.delete(plan, in: context) }
                     )
                     // Drag source is attached directly to the row, with no
                     // competing whole-row tap gesture (taps live on buttons
