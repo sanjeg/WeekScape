@@ -7,9 +7,11 @@
 
 import SwiftUI
 import SwiftData
+import CoreData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.isCloudSyncing) private var isCloudSyncing
     @State private var showingSettings = false
 
     var body: some View {
@@ -29,8 +31,21 @@ struct ContentView: View {
         .sheet(isPresented: $showingSettings) {
             SettingsView()
         }
-        .onAppear {
-            SampleData.seedIfNeeded(in: context)
+        .task {
+            await SampleData.seedWhenSafe(in: context, isCloudSyncing: isCloudSyncing)
+            SampleData.removeDuplicatePlans(in: context)
+
+            // Starter plans seeded on another device arrive via CloudKit well
+            // after launch, so reconcile duplicates after each import too.
+            let events = NotificationCenter.default.notifications(
+                named: NSPersistentCloudKitContainer.eventChangedNotification
+            )
+            for await note in events {
+                let key = NSPersistentCloudKitContainer.eventNotificationUserInfoKey
+                guard let event = note.userInfo?[key] as? NSPersistentCloudKitContainer.Event,
+                      event.type == .import, event.endDate != nil else { continue }
+                SampleData.removeDuplicatePlans(in: context)
+            }
         }
     }
 }
