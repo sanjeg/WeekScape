@@ -83,7 +83,14 @@ struct ContentView: View {
             await SampleData.seedWhenSafe(in: context, isCloudSyncing: isCloudSyncing)
             SampleData.removeDuplicatePlans(in: context)
             // Don't let the initial seed/dedup become the user's first "Undo".
-            context.undoManager?.removeAllActions()
+            // SwiftData closes the seed's undo group at the end of the runloop,
+            // so clear on the next turn — otherwise we wipe an empty stack and a
+            // dead Undo button lingers after first-launch seeding.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(400))
+                context.undoManager?.removeAllActions()
+                canUndo = context.undoManager?.canUndo ?? false
+            }
 
             // Starter plans seeded on another device arrive via CloudKit well
             // after launch, so reconcile duplicates after each import too.
