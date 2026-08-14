@@ -33,7 +33,7 @@ struct AboutView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
-                Text("Plan by the week, not the hour.")
+                Text("Your Weeks at a Glance")
                     .font(.headline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

@@ -48,4 +48,17 @@ enum PlannerFormat {
     static func dayLabel(_ date: Date) -> String {
         date.formatted(.dateTime.weekday(.abbreviated).day())
     }
+
+    /// A compact label for a multi-day span, e.g. "Sat 9 – Sun 10". When the
+    /// span crosses into another month the month is shown on both ends so the
+    /// range stays unambiguous.
+    static func dayRangeLabel(from start: Date, to end: Date) -> String {
+        let cal = WeekConfig.calendar
+        if cal.isDate(start, equalTo: end, toGranularity: .month) {
+            return "\(dayLabel(start)) – \(dayLabel(end))"
+        }
+        let head = start.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        let tail = end.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        return "\(head) – \(tail)"
+    }
 }

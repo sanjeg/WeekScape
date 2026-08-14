@@ -29,6 +29,15 @@ final class Plan {
     /// week without a committed date.
     var specificDate: Date?
 
+    /// Optional last day for a multi-day plan. Only meaningful when
+    /// `specificDate` is set and this falls on a later day; otherwise the plan
+    /// spans a single day.
+    var endDate: Date?
+
+    /// When true, the plan lives in the dateless "Wishlist" rather than in a
+    /// week. Its `weekStart` is a placeholder and is ignored while wishlisted.
+    var isWishlist: Bool = false
+
     /// Fractional ordering key so plans can be inserted between neighbors
     /// without renumbering the whole list.
     var sortOrder: Double = 0
@@ -45,6 +54,8 @@ final class Plan {
         notes: String = "",
         weekStart: Date,
         specificDate: Date? = nil,
+        endDate: Date? = nil,
+        isWishlist: Bool = false,
         sortOrder: Double = 0,
         color: PlanColor = .blue
     ) {
@@ -53,6 +64,8 @@ final class Plan {
         self.notes = notes
         self.weekStart = weekStart
         self.specificDate = specificDate
+        self.endDate = endDate
+        self.isWishlist = isWishlist
         self.sortOrder = sortOrder
         self.isDone = false
         self.colorRaw = color.rawValue
@@ -62,5 +75,12 @@ final class Plan {
     var color: PlanColor {
         get { PlanColor(rawValue: colorRaw) ?? .blue }
         set { colorRaw = newValue.rawValue }
+    }
+
+    /// True when the plan spans more than one day (has a start day and a strictly
+    /// later end day).
+    var isMultiDay: Bool {
+        guard let start = specificDate, let end = endDate else { return false }
+        return WeekConfig.calendar.startOfDay(for: end) > WeekConfig.calendar.startOfDay(for: start)
     }
 }

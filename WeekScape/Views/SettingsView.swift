@@ -4,13 +4,23 @@
 //
 
 import SwiftUI
+import EventKit
+#if os(iOS)
+import UIKit
+#endif
 
 struct SettingsView: View {
     @Environment(\.isCloudSyncing) private var isCloudSyncing
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    @Environment(CalendarStore.self) private var calendarStore
+    @Environment(\.openURL) private var openURL
 
     @AppStorage(WeekConfig.firstWeekdayKey) private var firstWeekday: Int = 2
     @AppStorage(WeekConfig.weeksAheadKey) private var weeksAhead: Int = WeekConfig.defaultWeeksAhead
+
+    /// Drives the destructive "Reset App" confirmation.
+    @State private var showingResetConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -30,6 +40,8 @@ struct SettingsView: View {
                 } footer: {
                     Text("How many future weeks appear when the app opens. You can always load more with “More weeks”.")
                 }
+
+                calendarSection
 
                 Section {
                     HStack {
@@ -55,6 +67,16 @@ struct SettingsView: View {
                         Label("Privacy", systemImage: "hand.raised")
                     }
                 }
+
+                Section {
+                    Button(role: .destructive) {
+                        showingResetConfirmation = true
+                    } label: {
+                        Label("Reset App", systemImage: "trash")
+                    }
+                } footer: {
+                    Text("Deletes every plan and restores WeekScape to its original state.")
+                }
             }
             .navigationTitle("Settings")
             #if os(iOS)
@@ -65,6 +87,81 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .alert("Reset App?", isPresented: $showingResetConfirmation) {
+                Button("Delete Everything", role: .destructive, action: resetApp)
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This permanently deletes all of your plans and settings and restores WeekScape to its original state. This can't be undone.")
+            }
+        }
+    }
+
+    /// Wipe all data and preferences, then close Settings so the fresh state
+    /// (including the welcome screen) is revealed.
+    private func resetApp() {
+        // Reset in-memory calendar preferences too, since these live in the
+        // observable store rather than being re-read from UserDefaults.
+        calendarStore.showEvents = false
+        calendarStore.selectedCalendarIDs = []
+        SampleData.resetToFreshInstall(in: context)
+        dismiss()
+    }
+
+    // MARK: - Calendar
+
+    @ViewBuilder
+    private var calendarSection: some View {
+        Section {
+            Toggle("Show Calendar Events", isOn: showEventsBinding)
+
+            if calendarStore.showEvents, calendarStore.authorizationStatus == .fullAccess {
+                NavigationLink {
+                    CalendarPickerView()
+                } label: {
+                    Label("Calendars", systemImage: "calendar")
+                }
+            }
+
+            if calendarStore.authorizationStatus == .denied
+                || calendarStore.authorizationStatus == .restricted {
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        openURL(url)
+                    }
+                }
+            }
+        } header: {
+            Text("Calendar")
+        } footer: {
+            Text(calendarFooter)
+        }
+    }
+
+    /// Turning the toggle on when access hasn't been decided prompts for it, and
+    /// only commits the "on" state if the user grants access.
+    private var showEventsBinding: Binding<Bool> {
+        Binding(
+            get: { calendarStore.showEvents },
+            set: { newValue in
+                guard newValue else {
+                    calendarStore.showEvents = false
+                    return
+                }
+                if calendarStore.authorizationStatus == .notDetermined {
+                    Task { calendarStore.showEvents = await calendarStore.requestAccess() }
+                } else {
+                    calendarStore.showEvents = true
+                }
+            }
+        )
+    }
+
+    private var calendarFooter: String {
+        switch calendarStore.authorizationStatus {
+        case .denied, .restricted:
+            return "Calendar access is off. Turn it on in Settings to show your events alongside your plans."
+        default:
+            return "Show events from your iPhone Calendar in each week, right beside your plans. Pick which calendars to include."
         }
     }
 }

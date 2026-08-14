@@ -11,6 +11,12 @@ import SwiftUI
 
 struct PlanRowView: View {
     let plan: Plan
+
+    /// The week this row is being shown in, so a multi-day plan can describe
+    /// whether it starts, continues, or ends here. `nil` (e.g. in the Wishlist)
+    /// shows the full span.
+    var containingWeek: Week? = nil
+
     let onToggleDone: () -> Void
     let onOpen: () -> Void
     let onDelete: () -> Void
@@ -93,7 +99,7 @@ struct PlanRowView: View {
                     Spacer(minLength: Theme.spacing2)
 
                     if let date = plan.specificDate {
-                        Text(PlannerFormat.dayLabel(date))
+                        Text(dayBadgeText(start: date))
                             .font(.caption.weight(.semibold))
                             .padding(.horizontal, Theme.spacing2)
                             .padding(.vertical, Theme.spacing1)
@@ -128,6 +134,29 @@ struct PlanRowView: View {
             RoundedRectangle(cornerRadius: Theme.rowRadius)
                 .stroke(plan.color.color.opacity(plan.isDone ? 0.08 : 0.20), lineWidth: 1)
         )
+    }
+
+    /// The day badge text: a single day, the full span, or — when shown inside a
+    /// specific week — how the span relates to that week (starts, continues, or
+    /// ends here).
+    private func dayBadgeText(start: Date) -> String {
+        guard plan.isMultiDay, let end = plan.endDate else {
+            return PlannerFormat.dayLabel(start)
+        }
+        guard let week = containingWeek else {
+            return PlannerFormat.dayRangeLabel(from: start, to: end)
+        }
+        let cal = WeekConfig.calendar
+        let s = cal.startOfDay(for: start)
+        let e = cal.startOfDay(for: end)
+        let startsHere = s >= week.start && s <= week.end
+        let endsHere = e >= week.start && e <= week.end
+        switch (startsHere, endsHere) {
+        case (true, true):   return PlannerFormat.dayRangeLabel(from: start, to: end)
+        case (true, false):  return "\(PlannerFormat.dayLabel(start)) →"
+        case (false, true):  return "→ \(PlannerFormat.dayLabel(end))"
+        case (false, false): return "continues"
+        }
     }
 
     /// Routes taps on the row's buttons: ignored at the end of a swipe, and

@@ -19,6 +19,8 @@ struct WeekScapeApp: App {
 
     init() {
         let (container, cloud) = Self.makeContainer()
+        // Enable undo so edits, deletions, and moves can be reverted.
+        container.mainContext.undoManager = UndoManager()
         self.modelContainer = container
         self.isCloudSyncing = cloud
     }

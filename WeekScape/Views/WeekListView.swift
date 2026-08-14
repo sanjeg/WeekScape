@@ -8,9 +8,11 @@
 
 import SwiftUI
 import SwiftData
+import EventKit
 
 struct WeekListView: View {
     @Environment(\.modelContext) private var context
+    @Environment(CalendarStore.self) private var calendarStore
 
     @Query(sort: \Plan.sortOrder) private var allPlans: [Plan]
 
@@ -42,6 +44,25 @@ struct WeekListView: View {
         aheadOverride == nil && behindOverride == nil
     }
 
+    /// Date span covering every visible week, used to fetch calendar events.
+    private var eventWindow: DateInterval? {
+        guard let first = weeks.first?.start, let last = weeks.last?.end else { return nil }
+        return DateInterval(start: first, end: last)
+    }
+
+    /// Recompute the calendar fetch whenever the window or the user's calendar
+    /// preferences change. `EKAuthorizationStatus` isn't `Hashable`, so its raw
+    /// value stands in for it.
+    private var eventReloadKey: String {
+        let window = eventWindow
+        return [
+            window.map { "\($0.start.timeIntervalSince1970)-\($0.end.timeIntervalSince1970)" } ?? "none",
+            "\(calendarStore.showEvents)",
+            "\(calendarStore.authorizationStatus.rawValue)",
+            calendarStore.selectedCalendarIDs.sorted().joined(separator: ",")
+        ].joined(separator: "|")
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -58,6 +79,7 @@ struct WeekListView: View {
                         WeekCardView(
                             week: week,
                             plans: PlanActions.plans(in: week, from: allPlans),
+                            events: calendarStore.events.filter { week.contains($0.start) },
                             allPlans: allPlans,
                             onAdd: { editorState = .create(week) },
                             onEdit: { editorState = .edit($0, week) }
@@ -95,6 +117,8 @@ struct WeekListView: View {
                         } label: {
                             Label("Today", systemImage: "arrow.uturn.backward.circle")
                                 .labelStyle(.titleAndIcon)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -102,6 +126,9 @@ struct WeekListView: View {
         }
         .sheet(item: $editorState) { state in
             PlanEditorView(state: state)
+        }
+        .task(id: eventReloadKey) {
+            if let eventWindow { calendarStore.reload(window: eventWindow) }
         }
     }
 
@@ -125,10 +152,16 @@ struct WeekListView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Text("WeekScape")
-                    .font(.title3.bold())
-                    .foregroundStyle(.primary)
-                Text("Plan by the week, not the hour.")
-                    .font(.caption2)
+                    .font(.title2.weight(.heavy))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [PlanColor.blue.color, PlanColor.purple.color],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                Text("Your Weeks at a Glance")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
             // Toolbar items aggressively compress text; keep ours intact.

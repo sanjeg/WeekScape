@@ -16,12 +16,20 @@ enum SampleData {
     // still receive the samples once.
     static let seededKey = "didSeedSampleData.v2"
 
+    /// Set when the user declines the starter plans in onboarding, so they are
+    /// never (re)seeded on this device.
+    static let optOutKey = "didOptOutStarterPlans"
+
+    /// Whether the one-time welcome/onboarding screen has been completed.
+    static let onboardingKey = "didCompleteOnboarding.v1"
+
     /// Inserts sample plans exactly once, and only when the store is empty
     /// (so we never duplicate data that arrives via iCloud sync).
     @MainActor
     static func seedIfNeeded(in context: ModelContext) {
         let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: seededKey) else { return }
+        guard !defaults.bool(forKey: seededKey),
+              !defaults.bool(forKey: optOutKey) else { return }
 
         var descriptor = FetchDescriptor<Plan>()
         descriptor.fetchLimit = 1
@@ -44,7 +52,8 @@ enum SampleData {
     /// immediately.
     @MainActor
     static func seedWhenSafe(in context: ModelContext, isCloudSyncing: Bool) async {
-        guard !UserDefaults.standard.bool(forKey: seededKey) else { return }
+        guard !UserDefaults.standard.bool(forKey: seededKey),
+              !UserDefaults.standard.bool(forKey: optOutKey) else { return }
 
         if isCloudSyncing, await iCloudAccountAvailable() {
             await firstImportOrTimeout(seconds: 15)
@@ -93,6 +102,45 @@ enum SampleData {
         UUID(uuidString: "5EEDDA7A-0000-4000-8000-000000000004")!,
         UUID(uuidString: "5EEDDA7A-0000-4000-8000-000000000005")!,
     ]
+
+    /// Removes any starter plans currently in the store and records the opt-out
+    /// so they are never seeded again on this device. Called when the user
+    /// declines the examples during onboarding.
+    @MainActor
+    static func removeStarterPlans(in context: ModelContext) {
+        let starterIDs = Set(sampleIDs)
+        if let plans = try? context.fetch(FetchDescriptor<Plan>()) {
+            for plan in plans where starterIDs.contains(plan.id) {
+                context.delete(plan)
+            }
+        }
+        let defaults = UserDefaults.standard
+        defaults.set(true, forKey: optOutKey)
+        defaults.set(true, forKey: seededKey)
+    }
+
+    /// Wipes all user data and app-managed preferences, then reseeds the starter
+    /// plans so the app matches a brand-new install. Onboarding is shown again on
+    /// return. This is irreversible and is only invoked from the Settings "Reset
+    /// App" confirmation.
+    @MainActor
+    static func resetToFreshInstall(in context: ModelContext) {
+        // Remove every plan (both scheduled and Wishlist) and clear undo history
+        // so the wipe itself can't be undone.
+        try? context.delete(model: Plan.self)
+        context.undoManager?.removeAllActions()
+
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: optOutKey)
+        defaults.removeObject(forKey: onboardingKey)
+        defaults.removeObject(forKey: WeekConfig.firstWeekdayKey)
+        defaults.removeObject(forKey: WeekConfig.weeksAheadKey)
+
+        // Reseed the starter plans and mark seeding done so the launch task
+        // doesn't seed a second time.
+        insertSamples(in: context)
+        defaults.set(true, forKey: seededKey)
+    }
 
     /// Deletes plans that share an `id`, keeping the earliest-created copy.
     /// Every device keeps the same survivor (ties broken by `createdAt`), so
