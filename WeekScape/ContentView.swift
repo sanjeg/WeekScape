@@ -60,7 +60,7 @@ struct ContentView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    .sharedBackgroundVisibility(.hidden)
+                    .plainToolbarBackground()
                 }
         }
         .environment(calendarStore)

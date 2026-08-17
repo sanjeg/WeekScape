@@ -101,14 +101,14 @@ struct WeekListView: View {
             .background(Theme.backgroundWash)
             // Hard scroll edge under the nav bar: scrolled content is cut off
             // with a dividing line instead of colliding with the brand header.
-            .scrollEdgeEffectStyle(.hard, for: .top)
+            .hardTopScrollEdge()
             .toolbar {
                 // Brand header pinned to the empty top-left of the nav bar,
                 // without the shared glass capsule around it.
                 ToolbarItem(placement: .navigation) {
                     header(proxy)
                 }
-                .sharedBackgroundVisibility(.hidden)
+                .plainToolbarBackground()
 
                 ToolbarItem(placement: .primaryAction) {
                     if !isDefaultWindow {
