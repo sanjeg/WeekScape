@@ -60,33 +60,30 @@ struct WeekCardView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Theme.spacing2) {
-            // Week dates lead and are the prominent element; the friendly
-            // relative label follows on the same line.
-            Text(PlannerFormat.weekRange(week))
-                .font(.title3.bold())
-                .foregroundStyle(accent)
+        VStack(alignment: .leading, spacing: Theme.spacing1) {
+            // Row 1: the week dates lead as the prominent element, with the NOW
+            // badge and add button.
+            HStack(alignment: .firstTextBaseline, spacing: Theme.spacing2) {
+                Text(PlannerFormat.weekRange(week))
+                    .font(.body.bold())
+                    .foregroundStyle(accent)
+
+                Spacer()
+
+                Button(action: onAdd) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.white, accentColor.gradient)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add plan to \(PlannerFormat.weekRange(week))")
+            }
+
+            // Row 2: the friendly relative label drops to its own line for
+            // breathing room.
             Text(PlannerFormat.weekTitle(week))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-            if week.isCurrent {
-                Text("NOW")
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(accentColor.gradient, in: Capsule())
-                    .foregroundStyle(.white)
-            }
-
-            Spacer()
-
-            Button(action: onAdd) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(.white, accentColor.gradient)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Add plan to \(PlannerFormat.weekRange(week))")
         }
     }
 
