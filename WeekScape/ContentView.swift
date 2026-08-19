@@ -15,8 +15,8 @@ struct ContentView: View {
     @State private var showingSettings = false
     @State private var showingWishlist = false
 
-    /// Whether an action can currently be undone (drives the Undo button).
-    @State private var canUndo = false
+    /// Restores deleted plans. Deletions are the only undoable action.
+    private let undoStore = PlanUndoStore.shared
 
     /// One-time onboarding flag. Bumped if the intro copy changes materially.
     @AppStorage(SampleData.onboardingKey) private var didCompleteOnboarding = false
@@ -31,15 +31,15 @@ struct ContentView: View {
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         HStack(spacing: Theme.spacing3) {
-                            if canUndo {
+                            if undoStore.canUndo {
                                 Button {
-                                    context.undoManager?.undo()
+                                    undoStore.undoLastDeletion(in: context)
                                 } label: {
                                     Image(systemName: "arrow.uturn.backward")
                                         .fontWeight(.regular)
                                         .foregroundStyle(.secondary)
                                 }
-                                .accessibilityLabel("Undo")
+                                .accessibilityLabel("Undo delete")
                             }
                             Button {
                                 showingWishlist = true
@@ -78,19 +78,9 @@ struct ContentView: View {
             OnboardingView { didCompleteOnboarding = true }
         }
         .task { await calendarStore.observeChanges() }
-        .task { await observeUndo() }
         .task {
             await SampleData.seedWhenSafe(in: context, isCloudSyncing: isCloudSyncing)
             SampleData.removeDuplicatePlans(in: context)
-            // Don't let the initial seed/dedup become the user's first "Undo".
-            // SwiftData closes the seed's undo group at the end of the runloop,
-            // so clear on the next turn — otherwise we wipe an empty stack and a
-            // dead Undo button lingers after first-launch seeding.
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(400))
-                context.undoManager?.removeAllActions()
-                canUndo = context.undoManager?.canUndo ?? false
-            }
 
             // Starter plans seeded on another device arrive via CloudKit well
             // after launch, so reconcile duplicates after each import too.
@@ -106,30 +96,6 @@ struct ContentView: View {
         }
     }
 
-    /// Keep `canUndo` in sync with the context's undo manager by watching the
-    /// relevant notifications (avoids Combine and manual polling).
-    private func observeUndo() async {
-        guard let manager = context.undoManager else { return }
-        canUndo = manager.canUndo
-
-        let names: [Notification.Name] = [
-            .NSUndoManagerDidCloseUndoGroup,
-            .NSUndoManagerDidUndoChange,
-            .NSUndoManagerDidRedoChange
-        ]
-        await withTaskGroup(of: Void.self) { group in
-            for name in names {
-                group.addTask {
-                    let notifications = NotificationCenter.default.notifications(
-                        named: name, object: manager
-                    )
-                    for await _ in notifications {
-                        await MainActor.run { canUndo = manager.canUndo }
-                    }
-                }
-            }
-        }
-    }
 }
 
 #Preview {

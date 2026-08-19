@@ -125,10 +125,10 @@ enum SampleData {
     /// App" confirmation.
     @MainActor
     static func resetToFreshInstall(in context: ModelContext) {
-        // Remove every plan (both scheduled and Wishlist) and clear undo history
-        // so the wipe itself can't be undone.
+        // Remove every plan (both scheduled and Wishlist) and drop any pending
+        // delete-undo so the wipe itself can't be undone.
         try? context.delete(model: Plan.self)
-        context.undoManager?.removeAllActions()
+        PlanUndoStore.shared.clear()
 
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: optOutKey)

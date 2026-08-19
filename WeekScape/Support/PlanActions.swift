@@ -147,7 +147,11 @@ enum PlanActions {
         plan.sortOrder = appendOrder(in: weekPlans.filter { !$0.isWishlist && $0.id != plan.id })
     }
 
+    /// Delete a plan, remembering it first so the deletion (and only the
+    /// deletion) can be undone from the toolbar.
+    @MainActor
     static func delete(_ plan: Plan, in context: ModelContext) {
+        PlanUndoStore.shared.recordDeletion(of: plan)
         context.delete(plan)
     }
 }

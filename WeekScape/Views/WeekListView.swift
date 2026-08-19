@@ -109,19 +109,6 @@ struct WeekListView: View {
                     header(proxy)
                 }
                 .plainToolbarBackground()
-
-                ToolbarItem(placement: .primaryAction) {
-                    if !isDefaultWindow {
-                        Button {
-                            resetView(proxy)
-                        } label: {
-                            Label("Today", systemImage: "arrow.uturn.backward.circle")
-                                .labelStyle(.titleAndIcon)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
             }
         }
         .sheet(item: $editorState) { state in
@@ -199,17 +186,6 @@ struct WeekListView: View {
     /// have left the layout — otherwise the scroll target position is stale.
     private func collapseEarlier(_ proxy: ScrollViewProxy) {
         withAnimation(.snappy) { behindOverride = nil }
-        Task { @MainActor in
-            withAnimation(.snappy) { proxy.scrollTo(topAnchorID, anchor: .top) }
-        }
-    }
-
-    /// Restore the default window and jump back to the top of the stream.
-    private func resetView(_ proxy: ScrollViewProxy) {
-        withAnimation(.snappy) {
-            aheadOverride = nil
-            behindOverride = nil
-        }
         Task { @MainActor in
             withAnimation(.snappy) { proxy.scrollTo(topAnchorID, anchor: .top) }
         }
