@@ -39,7 +39,10 @@ enum PlanActions {
                 buckets[weekStart, default: []].append(plan)
             }
         }
-        return buckets.mapValues(displayOrdered)
+        // Wrapped in a closure rather than passed as a function value:
+        // `displayOrdered` inherits the type's MainActor isolation, which
+        // can't be handed to `mapValues` as a nonisolated function.
+        return buckets.mapValues { displayOrdered($0) }
     }
 
     /// The start dates of every week `plan` shows up in. Mirrors `occupies`:
