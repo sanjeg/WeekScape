@@ -60,9 +60,25 @@ enum WeekConfig {
         return (1...7).contains(stored) ? stored : 2
     }
 
+    /// Last calendar handed out, with the first weekday it was built for.
+    private static var cachedCalendar: (weekday: Int, calendar: Calendar)?
+
+    /// The app's calendar.
+    ///
+    /// Cached because this is a hot path: every `Week` accessor, every
+    /// `PlanActions.occupies` check, and every date format goes through it, so
+    /// a scroll through the stream hits it thousands of times. Rebuilding a
+    /// `Calendar` each time also re-read `UserDefaults` on every call. The
+    /// cache is keyed on the stored first weekday, so changing that setting
+    /// still takes effect immediately.
     static var calendar: Calendar {
+        let weekday = firstWeekday
+        if let cached = cachedCalendar, cached.weekday == weekday {
+            return cached.calendar
+        }
         var calendar = Calendar(identifier: .gregorian)
-        calendar.firstWeekday = firstWeekday
+        calendar.firstWeekday = weekday
+        cachedCalendar = (weekday, calendar)
         return calendar
     }
 

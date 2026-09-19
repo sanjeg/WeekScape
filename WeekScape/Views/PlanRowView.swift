@@ -99,12 +99,22 @@ struct PlanRowView: View {
                     Spacer(minLength: Theme.spacing2)
 
                     if let date = plan.specificDate {
+                        // Day/date badge: dark-on-tint rather than color-on-tint,
+                        // which was too low contrast to read at caption size.
+                        // `.primary` keeps it legible in light and dark mode.
                         Text(dayBadgeText(start: date))
-                            .font(.caption.weight(.semibold))
+                            .font(.caption.weight(.bold))
                             .padding(.horizontal, Theme.spacing2)
                             .padding(.vertical, Theme.spacing1)
-                            .background(plan.color.color.opacity(0.15), in: Capsule())
-                            .foregroundStyle(plan.color.color)
+                            .background(
+                                plan.color.color.opacity(plan.isDone ? 0.12 : 0.30),
+                                in: Capsule()
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(plan.color.color.opacity(plan.isDone ? 0.15 : 0.45), lineWidth: 1)
+                            )
+                            .foregroundStyle(plan.isDone ? Color.secondary : Color.primary)
                     }
                 }
                 .contentShape(Rectangle())

@@ -70,20 +70,15 @@ struct PlanEditorView: View {
     /// leave the Wishlist) instead of staying dateless.
     @State private var addToWeek: Bool = false
 
-    @State private var assignDay: Bool = false
+    /// The plan's scheduling — an exact day or a whole week — driven by the
+    /// single `WhenPicker` control.
+    @State private var when: PlanWhen
 
-    /// The chosen start day, or `nil` when no day has been picked yet — in which
-    /// case no chip is highlighted and the plan stays undated.
-    @State private var selectedDay: Date?
-
-    /// Whether the plan spans multiple days.
+    /// Whether the plan spans multiple days. Only meaningful for an exact day.
     @State private var multiDay: Bool = false
 
-    /// The chosen end day for a multi-day plan (always on/after `selectedDay`).
+    /// The chosen end day for a multi-day plan (always after the start day).
     @State private var selectedEndDay: Date?
-
-    /// The week this plan will live in; changeable from the editor.
-    @State private var selectedWeekStart: Date
 
     /// The plan's week when the editor opened, used to detect a move. For a
     /// multi-day plan this is its start week, even when opened from a later week.
@@ -91,38 +86,28 @@ struct PlanEditorView: View {
 
     init(state: PlanEditorState) {
         self.state = state
-        _selectedDay = State(initialValue: state.existing?.specificDate)
         _selectedEndDay = State(initialValue: state.existing?.endDate)
 
-        let initialWeekStart: Date
+        let initialWhen: PlanWhen
         if let existing = state.existing {
-            initialWeekStart = existing.specificDate.map { WeekConfig.startOfWeek(for: $0) }
-                ?? existing.weekStart
+            initialWhen = existing.specificDate.map { PlanWhen.day($0) }
+                ?? .week(existing.weekStart)
+        } else if let week = state.week {
+            initialWhen = .week(week.start)
         } else {
-            initialWeekStart = state.week?.start ?? WeekConfig.startOfWeek(for: Date())
+            initialWhen = .week(WeekConfig.startOfWeek(for: Date()))
         }
-        self.originalWeekStart = initialWeekStart
-        _selectedWeekStart = State(initialValue: initialWeekStart)
+        _when = State(initialValue: initialWhen)
+        self.originalWeekStart = initialWhen.weekStart
     }
 
     private var isEditing: Bool { state.existing != nil }
 
-    private var selectedWeek: Week { Week(start: selectedWeekStart) }
+    private var selectedWeek: Week { Week(start: when.weekStart) }
 
     /// Whether the week/day scheduling controls are shown. Regular plans always
     /// have a week; Wishlist plans only when the user opts to schedule them.
     private var showSchedule: Bool { !state.isWishlistContext || addToWeek }
-
-    /// Weeks offered in the picker: a generous window around today, always
-    /// including the plan's current week.
-    private var weekOptions: [Week] {
-        var options = WeekConfig.window(past: 8, future: 26)
-        if !options.contains(where: { $0.start == selectedWeekStart }) {
-            options.append(selectedWeek)
-            options.sort { $0.start < $1.start }
-        }
-        return options
-    }
 
     var body: some View {
         NavigationStack {
@@ -145,8 +130,7 @@ struct PlanEditorView: View {
                 }
 
                 if showSchedule {
-                    weekSection
-                    daySection
+                    whenSection
                 }
 
                 Section("Color") {
@@ -194,67 +178,33 @@ struct PlanEditorView: View {
         }
     }
 
-    // MARK: - Week & day sections
+    // MARK: - When section
 
-    private var weekSection: some View {
+    /// One section for all scheduling: the combined week/day control, plus the
+    /// multi-day span, which only applies once a day is committed.
+    private var whenSection: some View {
         Section {
-            Picker("Week", selection: $selectedWeekStart) {
-                ForEach(weekOptions) { week in
-                    Text(PlannerFormat.weekRange(week))
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .tag(week.start)
-                }
-            }
-        } header: {
-            Text("Week")
-        } footer: {
-            if isEditing, selectedWeekStart != originalWeekStart {
-                Text("This plan will move to \(PlannerFormat.weekRange(selectedWeek)).")
-            }
-        }
-        .onChange(of: selectedWeekStart) { _, newStart in
-            // Carry the picked start day into the new week (same weekday), and
-            // shift a multi-day end by the same delta so the span is preserved.
-            let cal = WeekConfig.calendar
-            let oldStart = selectedDay
-            selectedDay = remap(selectedDay, toWeekStartingAt: newStart)
-            if let end = selectedEndDay, let from = oldStart, let to = selectedDay {
-                let delta = cal.dateComponents(
-                    [.day],
-                    from: cal.startOfDay(for: from),
-                    to: cal.startOfDay(for: to)
-                ).day ?? 0
-                selectedEndDay = cal.date(byAdding: .day, value: delta, to: cal.startOfDay(for: end))
-            }
-        }
-    }
+            WhenPicker(selection: $when)
 
-    private var daySection: some View {
-        Section {
-            Toggle("Pin to a specific day", isOn: $assignDay.animation())
-            if assignDay {
-                dayPicker
-                if selectedDay != nil {
-                    Toggle("Spans multiple days", isOn: $multiDay.animation())
-                    if multiDay, let start = selectedDay {
-                        DatePicker(
-                            "Ends",
-                            selection: endBinding,
-                            in: WeekConfig.calendar.startOfDay(for: start)...,
-                            displayedComponents: .date
-                        )
-                    }
+            if let start = when.day {
+                Toggle("Spans multiple days", isOn: $multiDay.animation())
+                if multiDay {
+                    DatePicker(
+                        "Ends",
+                        selection: endBinding,
+                        in: WeekConfig.calendar.startOfDay(for: start)...,
+                        displayedComponents: .date
+                    )
                 }
             }
         } footer: {
-            Text(dayFooter)
+            Text(whenFooter)
         }
-        .onChange(of: selectedDay) { _, newDay in
-            // Dropping the start day cancels a multi-day span; otherwise keep the
-            // end day strictly after the new start.
+        .onChange(of: when) { _, newWhen in
+            // Dropping to a whole week cancels a multi-day span; otherwise keep
+            // the end day strictly after the new start.
             let cal = WeekConfig.calendar
-            guard let newDay else {
+            guard let newDay = newWhen.day else {
                 multiDay = false
                 selectedEndDay = nil
                 return
@@ -267,7 +217,7 @@ struct PlanEditorView: View {
             // Seed a sensible end (the day after the start) when turning the span
             // on; clear it when turning it off.
             let cal = WeekConfig.calendar
-            guard on, let start = selectedDay else {
+            guard on, let start = when.day else {
                 if !on { selectedEndDay = nil }
                 return
             }
@@ -284,7 +234,7 @@ struct PlanEditorView: View {
             get: {
                 let cal = WeekConfig.calendar
                 if let end = selectedEndDay { return end }
-                if let start = selectedDay {
+                if let start = when.day {
                     return cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: start))
                         ?? cal.startOfDay(for: start)
                 }
@@ -294,45 +244,20 @@ struct PlanEditorView: View {
         )
     }
 
-    private var dayFooter: String {
-        if !assignDay {
-            return "Leave off to keep this plan floating anywhere in the week."
+    private var whenFooter: String {
+        var parts: [String] = []
+        switch when {
+        case .day:
+            parts.append(multiDay
+                         ? "This plan spans the selected days."
+                         : "Pinned to this day, and shown with a day badge.")
+        case .week:
+            parts.append("Floats anywhere in this week, with no committed day.")
         }
-        return multiDay
-            ? "This plan will span the selected days within the week."
-            : "This plan will show a day badge and stay flexible within the week."
-    }
-
-    // MARK: - Day pickers
-
-    private var dayPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Theme.spacing2) {
-                ForEach(selectedWeek.days, id: \.self) { day in
-                    dayChip(day, isSelected: isSameDay(day, selectedDay)) {
-                        // Tapping the selected day again unselects it (no date).
-                        selectedDay = isSameDay(day, selectedDay) ? nil : day
-                    }
-                }
-            }
-            .padding(.vertical, Theme.spacing1)
+        if isEditing, when.weekStart != originalWeekStart {
+            parts.append("It will move to \(PlannerFormat.weekRange(selectedWeek)).")
         }
-    }
-
-    private func dayChip(_ day: Date, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 2) {
-                Text(day.formatted(.dateTime.weekday(.narrow)))
-                    .font(.caption2)
-                Text(day.formatted(.dateTime.day()))
-                    .font(.headline)
-            }
-            .frame(width: 40, height: 52)
-            .background(isSelected ? color.color : Color.primary.opacity(0.05),
-                        in: RoundedRectangle(cornerRadius: 12))
-            .foregroundStyle(isSelected ? .white : .primary)
-        }
-        .buttonStyle(.plain)
+        return parts.joined(separator: " ")
     }
 
     // MARK: - Color picker
@@ -356,38 +281,15 @@ struct PlanEditorView: View {
         .padding(.vertical, Theme.spacing1)
     }
 
-    // MARK: - Helpers
-
-    private func isSameDay(_ a: Date, _ b: Date?) -> Bool {
-        b.map { WeekConfig.calendar.isDate(a, inSameDayAs: $0) } ?? false
-    }
-
-    /// Move a date to the same weekday in the week starting at `weekStart`.
-    private func remap(_ date: Date?, toWeekStartingAt weekStart: Date) -> Date? {
-        guard let date else { return nil }
-        let cal = WeekConfig.calendar
-        let offset = cal.dateComponents(
-            [.day],
-            from: WeekConfig.startOfWeek(for: date),
-            to: cal.startOfDay(for: date)
-        ).day ?? 0
-        return cal.date(byAdding: .day, value: offset, to: weekStart)
-    }
-
     // MARK: - Persistence
 
     private func loadExisting() {
-        guard let plan = state.existing else {
-            // New plan: default the pin toggle on for regular plans so a day is
-            // easy to add; Wishlist items start dateless (and unscheduled).
-            assignDay = !state.isWishlistContext
-            return
-        }
+        // `when` is seeded in `init`, since the picker needs it before first
+        // layout; everything else loads here.
+        guard let plan = state.existing else { return }
         title = plan.title
         notes = plan.notes
         color = plan.color
-        selectedDay = plan.specificDate
-        assignDay = plan.specificDate != nil
         if plan.isMultiDay {
             multiDay = true
             selectedEndDay = plan.endDate
@@ -401,10 +303,10 @@ struct PlanEditorView: View {
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let scheduled = showSchedule
-        // No date is stored unless scheduling into a week, the pin toggle is on,
-        // AND a day was picked.
+        // A day is only stored when scheduling into a week AND the picker is on
+        // an exact day rather than a whole week.
         let cal = WeekConfig.calendar
-        let startDay = (scheduled && assignDay) ? selectedDay.map { cal.startOfDay(for: $0) } : nil
+        let startDay = scheduled ? when.day : nil
         let endDay: Date? = {
             guard let start = startDay, multiDay, let end = selectedEndDay else { return nil }
             let normalizedEnd = cal.startOfDay(for: end)
@@ -436,7 +338,7 @@ struct PlanEditorView: View {
             return Plan(
                 title: title,
                 notes: notes,
-                weekStart: selectedWeekStart,
+                weekStart: when.weekStart,
                 specificDate: startDay,
                 endDate: endDay,
                 isWishlist: false,
@@ -469,9 +371,9 @@ struct PlanEditorView: View {
             return
         }
 
-        let wasScheduledElsewhere = plan.isWishlist || plan.weekStart != selectedWeekStart
+        let wasScheduledElsewhere = plan.isWishlist || plan.weekStart != when.weekStart
         plan.isWishlist = false
-        plan.weekStart = selectedWeekStart
+        plan.weekStart = when.weekStart
         plan.specificDate = startDay
         plan.endDate = endDay
         if wasScheduledElsewhere {

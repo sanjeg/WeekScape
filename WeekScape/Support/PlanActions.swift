@@ -23,19 +23,62 @@ enum PlanActions {
     /// their manual, drag-and-drop order (`sortOrder`). A multi-day plan appears
     /// in every week its span touches, so it shows up as it runs across weeks.
     static func plans(in week: Week, from all: [Plan]) -> [Plan] {
-        all.filter { !$0.isWishlist && occupies(week, $0) }
-            .sorted { lhs, rhs in
-                switch (lhs.specificDate, rhs.specificDate) {
-                case let (l?, r?):
-                    return l == r ? manualOrder(lhs, rhs) : l < r
-                case (.some, nil):
-                    return true            // dated before undated
-                case (nil, .some):
-                    return false           // undated after dated
-                case (nil, nil):
-                    return manualOrder(lhs, rhs)
-                }
+        displayOrdered(all.filter { !$0.isWishlist && occupies(week, $0) })
+    }
+
+    /// Bucket every non-wishlist plan by the start date of each week it
+    /// occupies, in a single pass, with each bucket in display order.
+    ///
+    /// Equivalent to calling `plans(in:from:)` once per week, but without
+    /// re-scanning the whole list per card — which matters because the stream
+    /// stretches to reach the furthest scheduled plan.
+    static func plansByWeekStart(from all: [Plan]) -> [Date: [Plan]] {
+        var buckets: [Date: [Plan]] = [:]
+        for plan in all where !plan.isWishlist {
+            for weekStart in occupiedWeekStarts(of: plan) {
+                buckets[weekStart, default: []].append(plan)
             }
+        }
+        return buckets.mapValues(displayOrdered)
+    }
+
+    /// The start dates of every week `plan` shows up in. Mirrors `occupies`:
+    /// an undated plan belongs to its stored week, while a dated plan covers
+    /// every week from its start day through its end day.
+    static func occupiedWeekStarts(of plan: Plan) -> [Date] {
+        guard let start = plan.specificDate else {
+            return [WeekConfig.startOfWeek(for: plan.weekStart)]
+        }
+        let cal = WeekConfig.calendar
+        let spanStart = cal.startOfDay(for: start)
+        let spanEnd = max(plan.endDate.map { cal.startOfDay(for: $0) } ?? spanStart, spanStart)
+
+        var weekStarts: [Date] = []
+        var cursor = WeekConfig.startOfWeek(for: spanStart)
+        let lastWeekStart = WeekConfig.startOfWeek(for: spanEnd)
+        while cursor <= lastWeekStart {
+            weekStarts.append(cursor)
+            guard let next = cal.date(byAdding: .weekOfYear, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+        return weekStarts
+    }
+
+    /// A week's plans in display order: dated plans first in chronological
+    /// order, then undated ones in the user's manual drag order.
+    private static func displayOrdered(_ plans: [Plan]) -> [Plan] {
+        plans.sorted { lhs, rhs in
+            switch (lhs.specificDate, rhs.specificDate) {
+            case let (l?, r?):
+                return l == r ? manualOrder(lhs, rhs) : l < r
+            case (.some, nil):
+                return true            // dated before undated
+            case (nil, .some):
+                return false           // undated after dated
+            case (nil, nil):
+                return manualOrder(lhs, rhs)
+            }
+        }
     }
 
     /// Whether `plan` should be shown in `week`. Dated plans are placed by their
@@ -99,7 +142,11 @@ enum PlanActions {
     /// Point a plan at a new week. A pinned date travels with the plan: it is
     /// remapped to the same weekday in the destination week, and a multi-day
     /// span shifts by the same amount so its length is preserved.
+    ///
+    /// Landing in a week also takes the plan off the Wishlist, so dragging an
+    /// idea out of the Wishlist card schedules it in one gesture.
     private static func reassignWeek(_ plan: Plan, to week: Week) {
+        plan.isWishlist = false
         let calendar = WeekConfig.calendar
         if let date = plan.specificDate, !week.contains(date) {
             // Land the start on the same weekday in the destination week, then
@@ -145,6 +192,38 @@ enum PlanActions {
         plan.specificDate = day.map { WeekConfig.calendar.startOfDay(for: $0) }
         plan.endDate = nil
         plan.sortOrder = appendOrder(in: weekPlans.filter { !$0.isWishlist && $0.id != plan.id })
+    }
+
+    /// Move a plan off its week and onto the end of the Wishlist. Any pinned
+    /// date is dropped, since wishlist items are dateless by definition.
+    static func moveToWishlist(_ plan: Plan, wishlistPlans: [Plan]) {
+        plan.sortOrder = wishlistAppendOrder(in: wishlistPlans.filter { $0.id != plan.id })
+        makeWishlisted(plan)
+    }
+
+    /// Insert `plan` immediately before `target` in the Wishlist, giving it a
+    /// fractional sort key between `target` and its predecessor.
+    static func insertInWishlist(_ plan: Plan, before target: Plan, orderedWishlistPlans: [Plan]) {
+        guard target.id != plan.id else { return }
+        makeWishlisted(plan)
+
+        let others = orderedWishlistPlans.filter { $0.id != plan.id }
+        // The target may not be in the list yet when a plan is dragged in from
+        // a week; append rather than guess at a position.
+        guard let targetIndex = others.firstIndex(where: { $0.id == target.id }) else {
+            plan.sortOrder = wishlistAppendOrder(in: others)
+            return
+        }
+        let upper = target.sortOrder
+        let lower = targetIndex > 0 ? others[targetIndex - 1].sortOrder : upper - 2
+        plan.sortOrder = (upper + lower) / 2
+    }
+
+    /// Strip a plan's scheduling so it reads as a dateless Wishlist idea.
+    private static func makeWishlisted(_ plan: Plan) {
+        plan.isWishlist = true
+        plan.specificDate = nil
+        plan.endDate = nil
     }
 
     /// Delete a plan, remembering it first so the deletion (and only the

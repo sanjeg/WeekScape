@@ -17,7 +17,10 @@ struct WeekCardView: View {
     let week: Week
     let plans: [Plan]
     let events: [CalendarEvent]
-    let allPlans: [Plan]
+
+    /// Ids of events already checked off, as a set so each row is an O(1)
+    /// lookup rather than a scan of every completion record.
+    let completedEventIDs: Set<String>
     let onAdd: () -> Void
     let onEdit: (Plan) -> Void
 
@@ -100,17 +103,62 @@ struct WeekCardView: View {
                 .padding(.vertical, Theme.spacing2)
         } else {
             VStack(spacing: Theme.spacing2) {
-                ForEach(orderedItems) { item in
-                    switch item {
-                    case .plan(let plan):
-                        planRow(plan)
-                    case .event(let event):
-                        // Read-only: no drag/drop, so a drag over it falls
-                        // through to the card-level append drop.
-                        CalendarEventRow(event: event)
+                // Days holding more than one item are gathered into a subtle
+                // group; single-item days render as plain rows.
+                ForEach(dayGroups) { group in
+                    if group.items.count > 1 {
+                        dayGroup(group)
+                    } else if let item = group.items.first {
+                        row(for: item)
                     }
                 }
+
+                // Undated plans keep their manual drag order, ungrouped.
+                ForEach(undatedItems) { item in
+                    row(for: item)
+                }
             }
+        }
+    }
+
+    /// A subtle container for two or more items landing on the same day: a small
+    /// day caption, tighter row spacing, and a faint backdrop.
+    private func dayGroup(_ group: DayGroup) -> some View {
+        VStack(alignment: .leading, spacing: Theme.spacing1) {
+            Text(PlannerFormat.dayLabel(group.day))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, Theme.spacing2)
+
+            VStack(spacing: Theme.spacing1) {
+                ForEach(group.items) { item in
+                    row(for: item)
+                }
+            }
+        }
+        .padding(.vertical, Theme.spacing2)
+        .padding(.horizontal, Theme.spacing1)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.rowRadius + 4)
+                .fill(Theme.dayGroupFill)
+        )
+    }
+
+    @ViewBuilder
+    private func row(for item: WeekItem) -> some View {
+        switch item {
+        case .plan(let plan):
+            planRow(plan)
+        case .event(let event):
+            // Not draggable: a drag over it falls through to the card-level
+            // append drop. It can still be checked off.
+            CalendarEventRow(
+                event: event,
+                isDone: completedEventIDs.contains(event.id),
+                onToggleDone: {
+                    EventActions.toggleDone(eventID: event.id, in: context)
+                }
+            )
         }
     }
 
@@ -155,15 +203,32 @@ struct WeekCardView: View {
         // starting. Edit/delete remain available by tapping the row title.
     }
 
-    /// The card's rows in display order: time-anchored items (dated plans and
-    /// calendar events) interleaved chronologically, then undated plans in the
-    /// user's manual order.
-    private var orderedItems: [WeekItem] {
+    /// Time-anchored items (dated plans and calendar events) bucketed by the day
+    /// they occupy in this week, in chronological order.
+    ///
+    /// A multi-day plan running in from an earlier week anchors to a day outside
+    /// this card, so the bucket key is clamped to the week's start — it groups
+    /// under the first day it actually occupies here.
+    private var dayGroups: [DayGroup] {
+        let cal = WeekConfig.calendar
         let datedPlans = plans.filter { $0.specificDate != nil }
-        let undatedPlans = plans.filter { $0.specificDate == nil }
         var timed: [WeekItem] = datedPlans.map { WeekItem.plan($0) } + events.map { WeekItem.event($0) }
         timed.sort { $0.sortDate < $1.sortDate }
-        return timed + undatedPlans.map { WeekItem.plan($0) }
+
+        let weekStart = cal.startOfDay(for: week.start)
+        var order: [Date] = []
+        var buckets: [Date: [WeekItem]] = [:]
+        for item in timed {
+            let day = max(cal.startOfDay(for: item.sortDate), weekStart)
+            if buckets[day] == nil { order.append(day) }
+            buckets[day, default: []].append(item)
+        }
+        return order.map { DayGroup(day: $0, items: buckets[$0] ?? []) }
+    }
+
+    /// Undated plans, which float in the week in the user's manual drag order.
+    private var undatedItems: [WeekItem] {
+        plans.filter { $0.specificDate == nil }.map { WeekItem.plan($0) }
     }
 
     // MARK: - Styling
@@ -210,6 +275,14 @@ struct WeekCardView: View {
 
 // MARK: - Week item
 
+/// The items landing on one day of a week card.
+private struct DayGroup: Identifiable {
+    let day: Date
+    let items: [WeekItem]
+
+    var id: Date { day }
+}
+
 /// One entry in a week card: either a user plan or a read-only calendar event.
 private enum WeekItem: Identifiable {
     case plan(Plan)
@@ -237,14 +310,19 @@ private enum WeekItem: Identifiable {
 
 // MARK: - Calendar event row
 
-/// A read-only row for an event mirrored from the iPhone Calendar. It matches a
-/// plan row exactly — color spine, title, and a day badge in the same place —
-/// with one difference: a calendar icon stands in for the completion toggle. No
-/// time is shown, and it carries no toggle/drag/delete affordances.
+/// A row for an event mirrored from the iPhone Calendar. It matches a plan row
+/// exactly — color spine, completion toggle, title, and a day badge in the same
+/// places. The badge carries a calendar glyph so the row still reads as
+/// imported, and the event itself stays read-only: checking it off is recorded
+/// in the app and never written back to the user's calendar.
 private struct CalendarEventRow: View {
     @Environment(CalendarStore.self) private var calendarStore
 
     let event: CalendarEvent
+
+    /// Whether the user has checked this occurrence off.
+    let isDone: Bool
+    let onToggleDone: () -> Void
 
     /// The live event to preview, set on tap. `EKEvent` isn't `Identifiable`,
     /// so it's wrapped for `.sheet(item:)`.
@@ -256,14 +334,10 @@ private struct CalendarEventRow: View {
     }
 
     var body: some View {
-        Button(action: openPreview) {
-            rowContent
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint("Shows event details")
-        .sheet(item: $previewItem) { item in
-            EventPreviewView(event: item.event)
-        }
+        rowContent
+            .sheet(item: $previewItem) { item in
+                EventPreviewView(event: item.event)
+            }
     }
 
     /// Resolve the live event and preview it in-app. Silently does nothing if
@@ -281,28 +355,56 @@ private struct CalendarEventRow: View {
                 .fill(spineGradient)
                 .frame(width: 4)
                 .frame(maxHeight: .infinity)
+                .opacity(isDone ? 0.35 : 1)
 
-            // Calendar icon in place of the plan's completion circle.
-            Image(systemName: "calendar")
-                .font(.title3)
-                .foregroundStyle(event.color)
+            // Completion toggle in the same slot as a plan's.
+            Button(action: onToggleDone) {
+                Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isDone ? event.color : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isDone ? "Mark as not done" : "Mark as done")
 
-            HStack(spacing: Theme.spacing2) {
-                Text(event.title.isEmpty ? "(No title)" : event.title)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(Color.primary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
+            // The rest of the row opens the event preview.
+            Button(action: openPreview) {
+                HStack(spacing: Theme.spacing2) {
+                    Text(event.title.isEmpty ? "(No title)" : event.title)
+                        .font(.body.weight(.medium))
+                        .strikethrough(isDone, color: .secondary)
+                        .foregroundStyle(isDone ? Color.secondary : Color.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
 
-                Spacer(minLength: Theme.spacing2)
+                    Spacer(minLength: Theme.spacing2)
 
-                Text(PlannerFormat.dayLabel(event.start))
-                    .font(.caption.weight(.semibold))
+                    // Calendar glyph marks the row as imported, now that the
+                    // leading slot holds the completion toggle.
+                    HStack(spacing: Theme.spacing1) {
+                        Image(systemName: "calendar")
+                            .font(.caption2)
+                        Text(PlannerFormat.dayLabel(event.start))
+                            .font(.caption.weight(.bold))
+                    }
                     .padding(.horizontal, Theme.spacing2)
                     .padding(.vertical, Theme.spacing1)
-                    .background(event.color.opacity(0.15), in: Capsule())
-                    .foregroundStyle(event.color)
+                    .background(event.color.opacity(isDone ? 0.12 : 0.30), in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(event.color.opacity(isDone ? 0.15 : 0.45), lineWidth: 1)
+                    )
+                    .foregroundStyle(isDone ? Color.secondary : Color.primary)
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            // Keep announcing the row as imported calendar data, which the
+            // visible calendar glyph conveys sighted.
+            .accessibilityLabel(
+                "Calendar event: \(event.title), \(PlannerFormat.dayLabel(event.start))"
+                    + (isDone ? ", done" : "")
+            )
+            .accessibilityHint("Shows event details")
         }
         .padding(.vertical, Theme.spacing2)
         .padding(.horizontal, Theme.spacing3)
@@ -314,8 +416,8 @@ private struct CalendarEventRow: View {
                     // Soft wash of the event's color across the row.
                     LinearGradient(
                         colors: [
-                            event.color.opacity(0.12),
-                            event.color.opacity(0.04)
+                            event.color.opacity(isDone ? 0.04 : 0.12),
+                            event.color.opacity(isDone ? 0.02 : 0.04)
                         ],
                         startPoint: .leading,
                         endPoint: .trailing
@@ -325,10 +427,8 @@ private struct CalendarEventRow: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.rowRadius)
-                .stroke(event.color.opacity(0.20), lineWidth: 1)
+                .stroke(event.color.opacity(isDone ? 0.08 : 0.20), lineWidth: 1)
         )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Calendar event: \(event.title), \(PlannerFormat.dayLabel(event.start))")
     }
 
     /// Matches `PlanColor.gradient` (lighter → base) so the spine reads the same

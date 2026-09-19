@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import EventKit
 #if os(iOS)
 import UIKit

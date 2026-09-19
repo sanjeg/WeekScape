@@ -34,7 +34,7 @@ struct WeekScapeApp: App {
     /// Try CloudKit-backed storage first, then local, then in-memory as a last
     /// resort. Returns the container and whether CloudKit sync is active.
     private static func makeContainer() -> (ModelContainer, Bool) {
-        let schema = Schema([Plan.self])
+        let schema = Schema([Plan.self, EventCompletion.self])
 
         // 1. iCloud sync (requires the iCloud + Background Modes capabilities).
         let cloudConfig = ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)

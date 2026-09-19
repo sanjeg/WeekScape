@@ -27,7 +27,7 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            WeekListView()
+            WeekListView(showingWishlist: $showingWishlist)
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         HStack(spacing: Theme.spacing3) {
@@ -42,13 +42,13 @@ struct ContentView: View {
                                 .accessibilityLabel("Undo delete")
                             }
                             Button {
-                                showingWishlist = true
+                                withAnimation(.snappy) { showingWishlist.toggle() }
                             } label: {
-                                Image(systemName: "star")
+                                Image(systemName: showingWishlist ? "star.fill" : "star")
                                     .fontWeight(.regular)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(showingWishlist ? PlanColor.orange.color : .secondary)
                             }
-                            .accessibilityLabel("Wishlist")
+                            .accessibilityLabel(showingWishlist ? "Hide Wishlist" : "Show Wishlist")
                             Button {
                                 showingSettings = true
                             } label: {
@@ -67,9 +67,6 @@ struct ContentView: View {
         .sheet(isPresented: $showingSettings) {
             SettingsView()
                 .environment(calendarStore)
-        }
-        .sheet(isPresented: $showingWishlist) {
-            WishlistView()
         }
         .fullScreenCover(isPresented: Binding(
             get: { !didCompleteOnboarding },
@@ -100,7 +97,10 @@ struct ContentView: View {
 
 #Preview {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: Plan.self, configurations: config)
+    let container = try! ModelContainer(
+        for: Plan.self, EventCompletion.self,
+        configurations: config
+    )
     SampleData.insertSamples(in: container.mainContext)
     return ContentView()
         .modelContainer(container)

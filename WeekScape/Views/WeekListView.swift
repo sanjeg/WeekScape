@@ -14,7 +14,15 @@ struct WeekListView: View {
     @Environment(\.modelContext) private var context
     @Environment(CalendarStore.self) private var calendarStore
 
+    /// Whether the Wishlist card is showing above the current week. Owned by
+    /// the root view so the toolbar's star button can toggle it.
+    @Binding var showingWishlist: Bool
+
     @Query(sort: \Plan.sortOrder) private var allPlans: [Plan]
+
+    /// Check-off records for imported calendar events, fetched once for the
+    /// whole stream rather than per card.
+    @Query private var eventCompletions: [EventCompletion]
 
     // Re-read when settings change so the whole stream recomputes.
     @AppStorage(WeekConfig.firstWeekdayKey) private var firstWeekday: Int = 2
@@ -28,20 +36,69 @@ struct WeekListView: View {
     @State private var behindOverride: Int?
     @State private var editorState: PlanEditorState?
 
+    /// Guards the one-time launch scroll that parks the current week on top.
+    @State private var didInitialScroll = false
+
     /// Anchor id for the very top of the stream.
     private let topAnchorID = "stream-top"
 
-    private var weeksAhead: Int { aheadOverride ?? storedWeeksAhead }
+    /// Upper bound on the auto-extension below, so one far-out plan can't make
+    /// the stream unboundedly long.
+    private let maxWeeksAhead = 104
+
+    /// The window always stretches far enough forward to reach the furthest
+    /// scheduled plan, so a plan dated months out is still reachable.
+    private var weeksAhead: Int {
+        max(aheadOverride ?? storedWeeksAhead, weeksToFurthestPlan)
+    }
+
     private var weeksBehind: Int { behindOverride ?? defaultWeeksBehind }
+
+    /// Weeks from the current week to the furthest future plan (0 when none).
+    private var weeksToFurthestPlan: Int {
+        let cal = WeekConfig.calendar
+        let thisWeek = WeekConfig.startOfWeek(for: Date())
+        let furthest = allPlans
+            .filter { !$0.isWishlist }
+            .map { plan -> Int in
+                let anchor = plan.endDate ?? plan.specificDate ?? plan.weekStart
+                let week = WeekConfig.startOfWeek(for: anchor)
+                return cal.dateComponents([.weekOfYear], from: thisWeek, to: week).weekOfYear ?? 0
+            }
+            .max() ?? 0
+        return min(max(furthest, 0), maxWeeksAhead)
+    }
 
     private var weeks: [Week] {
         _ = firstWeekday // establish dependency for recomputation
         return WeekConfig.window(past: weeksBehind, future: weeksAhead)
     }
 
-    /// True when the visible window matches the configured default view.
-    private var isDefaultWindow: Bool {
-        aheadOverride == nil && behindOverride == nil
+    /// The current week always falls inside the window, so this is the scroll
+    /// target that puts "this week" at the top on launch.
+    private var currentWeekID: Week.ID? {
+        weeks.first(where: \.isCurrent)?.id
+    }
+
+    /// Dateless wishlist ideas, already in manual order via the query's sort.
+    private var wishlistPlans: [Plan] {
+        allPlans.filter(\.isWishlist)
+    }
+
+    /// Plans and events bucketed by week start, and completions as a set, so
+    /// each card is a hash lookup instead of a fresh scan of every collection.
+    private var plansByWeekStart: [Date: [Plan]] {
+        PlanActions.plansByWeekStart(from: allPlans)
+    }
+
+    private var eventsByWeekStart: [Date: [CalendarEvent]] {
+        Dictionary(grouping: calendarStore.events) {
+            WeekConfig.startOfWeek(for: $0.start)
+        }
+    }
+
+    private var completedEventIDs: Set<String> {
+        Set(eventCompletions.map(\.eventID))
     }
 
     /// Date span covering every visible week, used to fetch calendar events.
@@ -64,7 +121,22 @@ struct WeekListView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
+        // The stream's height sets the pinned Wishlist card's budget, so it can
+        // never grow past its share of the screen.
+        GeometryReader { geo in
+            stream(containerHeight: geo.size.height)
+        }
+    }
+
+    private func stream(containerHeight: CGFloat) -> some View {
+        // Built once per render and captured by the cards below. Reading the
+        // computed properties inside the ForEach would rebuild them per week,
+        // which is exactly what this replaces.
+        let plansByWeek = plansByWeekStart
+        let eventsByWeek = eventsByWeekStart
+        let doneEventIDs = completedEventIDs
+
+        return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: Theme.spacing4) {
                     windowControls(
@@ -78,9 +150,9 @@ struct WeekListView: View {
                     ForEach(weeks) { week in
                         WeekCardView(
                             week: week,
-                            plans: PlanActions.plans(in: week, from: allPlans),
-                            events: calendarStore.events.filter { week.contains($0.start) },
-                            allPlans: allPlans,
+                            plans: plansByWeek[week.start] ?? [],
+                            events: eventsByWeek[week.start] ?? [],
+                            completedEventIDs: doneEventIDs,
                             onAdd: { editorState = .create(week) },
                             onEdit: { editorState = .edit($0, week) }
                         )
@@ -89,7 +161,9 @@ struct WeekListView: View {
 
                     windowControls(
                         expand: ("More weeks", "chevron.down", { aheadOverride = weeksAhead + 4 }),
-                        collapse: weeksAhead > storedWeeksAhead
+                        // Keyed off the manual override, not `weeksAhead`, which
+                        // also grows on its own to reach far-future plans.
+                        collapse: aheadOverride != nil
                             ? ("Show fewer", { aheadOverride = nil })
                             : nil
                     )
@@ -102,6 +176,24 @@ struct WeekListView: View {
             // Hard scroll edge under the nav bar: scrolled content is cut off
             // with a dividing line instead of colliding with the brand header.
             .hardTopScrollEdge()
+            // The Wishlist is pinned above the stream rather than living in it,
+            // so it stays put while the weeks scroll underneath. Plans can
+            // still be dragged between it and any week card.
+            .safeAreaInset(edge: .top, spacing: Theme.spacing4) {
+                if showingWishlist {
+                    WishlistCardView(
+                        plans: wishlistPlans,
+                        maxRowsHeight: Theme.wishlistRowsHeight(in: containerHeight),
+                        onAdd: { editorState = .createWishlist },
+                        onEdit: { editorState = .editWishlist($0) },
+                        onClose: {
+                            withAnimation(.snappy) { showingWishlist = false }
+                        }
+                    )
+                    .padding(.horizontal, Theme.spacing4)
+                    .padding(.top, Theme.spacing2)
+                }
+            }
             .toolbar {
                 // Brand header pinned to the empty top-left of the nav bar,
                 // without the shared glass capsule around it.
@@ -109,6 +201,17 @@ struct WeekListView: View {
                     header(proxy)
                 }
                 .plainToolbarBackground()
+            }
+            // Launch with the current week on top. Earlier weeks stay just
+            // above, reachable by scrolling up.
+            .onAppear {
+                guard !didInitialScroll, let currentWeekID else { return }
+                didInitialScroll = true
+                // Next runloop tick: the lazy stack has to lay the card out
+                // before it can be scrolled to.
+                Task { @MainActor in
+                    proxy.scrollTo(currentWeekID, anchor: .top)
+                }
             }
         }
         .sheet(item: $editorState) { state in
@@ -190,4 +293,33 @@ struct WeekListView: View {
             withAnimation(.snappy) { proxy.scrollTo(topAnchorID, anchor: .top) }
         }
     }
+}
+
+/// Previews the week stream on its own. `ContentView`'s preview runs the real
+/// app root, which starts the long-lived CloudKit and EventKit observers — those
+/// make the canvas unstable, so prefer this one while working on the UI.
+#Preview("Week stream") {
+    @Previewable @State var showingWishlist = false
+
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(
+        for: Plan.self, EventCompletion.self,
+        configurations: config
+    )
+    SampleData.insertSamples(in: container.mainContext)
+
+    return NavigationStack {
+        WeekListView(showingWishlist: $showingWishlist)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        withAnimation(.snappy) { showingWishlist.toggle() }
+                    } label: {
+                        Image(systemName: showingWishlist ? "star.fill" : "star")
+                    }
+                }
+            }
+    }
+    .modelContainer(container)
+    .environment(CalendarStore())
 }

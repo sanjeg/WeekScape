@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct OnboardingView: View {
     @Environment(\.modelContext) private var context

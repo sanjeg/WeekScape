@@ -21,6 +21,24 @@ enum Theme {
     static let cardRadius: CGFloat = 20
     static let rowRadius: CGFloat = 14
 
+    /// Share of the stream's height the pinned Wishlist card's rows may occupy
+    /// before they scroll inside the card, so it never takes over the screen.
+    static let wishlistRowsHeightFraction: CGFloat = 0.26
+
+    /// Floor and ceiling for that share, so the card stays usable on a small
+    /// screen and doesn't sprawl on a large one.
+    static let wishlistRowsMinHeight: CGFloat = 96
+    static let wishlistRowsMaxHeight: CGFloat = 220
+
+    /// Row area cap for a stream of `containerHeight` points.
+    static func wishlistRowsHeight(in containerHeight: CGFloat) -> CGFloat {
+        let target = containerHeight * wishlistRowsHeightFraction
+        return min(max(target, wishlistRowsMinHeight), wishlistRowsMaxHeight)
+    }
+
+    /// Backdrop for a subtle same-day grouping of plans inside a week card.
+    static let dayGroupFill = Color.primary.opacity(0.04)
+
     static let cardShadow = Color.black.opacity(0.06)
 
     /// Rotating accent hue for week cards so the stream feels lively without
