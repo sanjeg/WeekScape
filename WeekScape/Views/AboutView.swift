@@ -15,15 +15,14 @@ struct AboutView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Theme.spacing4) {
-                Image(systemName: "calendar.day.timeline.left")
-                    .font(.system(size: 56))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [PlanColor.blue.color, PlanColor.purple.color],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                // The real app icon, matching onboarding and the nav header —
+                // this used to be an SF Symbol, which read as a different app.
+                Image("AppLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 72, height: 72)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    .shadow(color: PlanColor.pink.color.opacity(0.35), radius: 8, y: 4)
                     .padding(.top, Theme.spacing5)
 
                 Text("WeekScape")
