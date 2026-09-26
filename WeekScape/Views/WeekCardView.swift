@@ -154,6 +154,7 @@ struct WeekCardView: View {
             // append drop. It can still be checked off.
             CalendarEventRow(
                 event: event,
+                containingWeek: week,
                 isDone: completedEventIDs.contains(event.id),
                 onToggleDone: {
                     EventActions.toggleDone(eventID: event.id, in: context)
@@ -320,6 +321,10 @@ private struct CalendarEventRow: View {
 
     let event: CalendarEvent
 
+    /// The week this row is being shown in, so a multi-day event can describe
+    /// whether it starts, continues, or ends here.
+    let containingWeek: Week
+
     /// Whether the user has checked this occurrence off.
     let isDone: Bool
     let onToggleDone: () -> Void
@@ -383,7 +388,11 @@ private struct CalendarEventRow: View {
                     HStack(spacing: Theme.spacing1) {
                         Image(systemName: "calendar")
                             .font(.caption2)
-                        Text(PlannerFormat.dayLabel(event.start))
+                        Text(PlannerFormat.spanBadge(
+                            start: event.start,
+                            lastDay: event.lastDay,
+                            in: containingWeek
+                        ))
                             .font(.caption.weight(.bold))
                     }
                     .padding(.horizontal, Theme.spacing2)
@@ -401,7 +410,12 @@ private struct CalendarEventRow: View {
             // Keep announcing the row as imported calendar data, which the
             // visible calendar glyph conveys sighted.
             .accessibilityLabel(
-                "Calendar event: \(event.title), \(PlannerFormat.dayLabel(event.start))"
+                "Calendar event: \(event.title), "
+                    + PlannerFormat.spanBadge(
+                        start: event.start,
+                        lastDay: event.lastDay,
+                        in: containingWeek
+                    )
                     + (isDone ? ", done" : "")
             )
             .accessibilityHint("Shows event details")

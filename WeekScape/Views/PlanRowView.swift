@@ -150,23 +150,11 @@ struct PlanRowView: View {
     /// specific week — how the span relates to that week (starts, continues, or
     /// ends here).
     private func dayBadgeText(start: Date) -> String {
-        guard plan.isMultiDay, let end = plan.endDate else {
-            return PlannerFormat.dayLabel(start)
-        }
-        guard let week = containingWeek else {
-            return PlannerFormat.dayRangeLabel(from: start, to: end)
-        }
-        let cal = WeekConfig.calendar
-        let s = cal.startOfDay(for: start)
-        let e = cal.startOfDay(for: end)
-        let startsHere = s >= week.start && s <= week.end
-        let endsHere = e >= week.start && e <= week.end
-        switch (startsHere, endsHere) {
-        case (true, true):   return PlannerFormat.dayRangeLabel(from: start, to: end)
-        case (true, false):  return "\(PlannerFormat.dayLabel(start)) →"
-        case (false, true):  return "→ \(PlannerFormat.dayLabel(end))"
-        case (false, false): return "continues"
-        }
+        PlannerFormat.spanBadge(
+            start: start,
+            lastDay: (plan.isMultiDay ? plan.endDate : nil) ?? start,
+            in: containingWeek
+        )
     }
 
     /// Routes taps on the row's buttons: ignored at the end of a swipe, and

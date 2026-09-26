@@ -44,6 +44,37 @@ struct CalendarEvent: Identifiable, Hashable {
             self.color = .secondary
         }
     }
+
+    /// The first day the event occupies.
+    var firstDay: Date {
+        WeekConfig.calendar.startOfDay(for: start)
+    }
+
+    /// The last day the event occupies, inclusive.
+    ///
+    /// EventKit stores an exclusive end: an all-day event on Sep 12 ends at
+    /// midnight on Sep 13, and a timed event can likewise run to midnight.
+    /// Stepping back off an exact midnight keeps a one-day event from counting
+    /// as two.
+    var lastDay: Date {
+        let calendar = WeekConfig.calendar
+        var effectiveEnd = end
+        if effectiveEnd > start, effectiveEnd == calendar.startOfDay(for: effectiveEnd) {
+            effectiveEnd = effectiveEnd.addingTimeInterval(-1)
+        }
+        return max(calendar.startOfDay(for: effectiveEnd), firstDay)
+    }
+
+    /// True when the event covers more than one day.
+    var isMultiDay: Bool {
+        lastDay > firstDay
+    }
+
+    /// Start dates of every week this event runs across, so a multi-day event
+    /// appears in each of them the way a multi-day plan does.
+    var occupiedWeekStarts: [Date] {
+        WeekConfig.weekStarts(from: firstDay, through: lastDay)
+    }
 }
 
 /// Central place for the app's calendar keys, mirroring `WeekConfig`.

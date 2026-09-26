@@ -89,6 +89,24 @@ enum WeekConfig {
         return calendar.date(from: comps) ?? calendar.startOfDay(for: date)
     }
 
+    /// Start dates of every week touched by the span `first...last`, inclusive.
+    ///
+    /// Shared by plans and calendar events so a multi-day item shows up in each
+    /// week it runs across, and so the two can't drift apart.
+    static func weekStarts(from first: Date, through last: Date) -> [Date] {
+        let calendar = calendar
+        var cursor = startOfWeek(for: first)
+        let lastWeekStart = startOfWeek(for: max(last, first))
+
+        var starts: [Date] = []
+        while cursor <= lastWeekStart {
+            starts.append(cursor)
+            guard let next = calendar.date(byAdding: .weekOfYear, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+        return starts
+    }
+
     /// A window of weeks: `past` weeks before the current week through
     /// `future` weeks after it (inclusive of the current week).
     static func window(past: Int, future: Int) -> [Week] {

@@ -55,16 +55,7 @@ enum PlanActions {
         let cal = WeekConfig.calendar
         let spanStart = cal.startOfDay(for: start)
         let spanEnd = max(plan.endDate.map { cal.startOfDay(for: $0) } ?? spanStart, spanStart)
-
-        var weekStarts: [Date] = []
-        var cursor = WeekConfig.startOfWeek(for: spanStart)
-        let lastWeekStart = WeekConfig.startOfWeek(for: spanEnd)
-        while cursor <= lastWeekStart {
-            weekStarts.append(cursor)
-            guard let next = cal.date(byAdding: .weekOfYear, value: 1, to: cursor) else { break }
-            cursor = next
-        }
-        return weekStarts
+        return WeekConfig.weekStarts(from: spanStart, through: spanEnd)
     }
 
     /// A week's plans in display order: dated plans first in chronological

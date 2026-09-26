@@ -49,6 +49,29 @@ enum PlannerFormat {
         date.formatted(.dateTime.weekday(.abbreviated).day())
     }
 
+    /// The day badge for an item occupying `start...lastDay`, as seen from
+    /// `week`: a single day, the full span, or — when the span runs beyond the
+    /// week — how it relates to that week (starts, continues, or ends here).
+    ///
+    /// Shared by plan rows and calendar-event rows so both read the same way.
+    static func spanBadge(start: Date, lastDay: Date, in week: Week?) -> String {
+        let calendar = WeekConfig.calendar
+        let first = calendar.startOfDay(for: start)
+        let last = max(calendar.startOfDay(for: lastDay), first)
+
+        guard last > first else { return dayLabel(start) }
+        guard let week else { return dayRangeLabel(from: first, to: last) }
+
+        let startsHere = first >= week.start && first <= week.end
+        let endsHere = last >= week.start && last <= week.end
+        switch (startsHere, endsHere) {
+        case (true, true):   return dayRangeLabel(from: first, to: last)
+        case (true, false):  return "\(dayLabel(first)) →"
+        case (false, true):  return "→ \(dayLabel(last))"
+        case (false, false): return "continues"
+        }
+    }
+
     /// A compact label for a multi-day span, e.g. "Sat 9 – Sun 10". When the
     /// span crosses into another month the month is shown on both ends so the
     /// range stays unambiguous.

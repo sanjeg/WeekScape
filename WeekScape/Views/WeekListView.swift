@@ -91,10 +91,17 @@ struct WeekListView: View {
         PlanActions.plansByWeekStart(from: allPlans)
     }
 
+    /// Events bucketed by week start. A multi-day event lands in every week it
+    /// runs across, so it reads the same as a multi-day plan rather than
+    /// showing up only in the week it began.
     private var eventsByWeekStart: [Date: [CalendarEvent]] {
-        Dictionary(grouping: calendarStore.events) {
-            WeekConfig.startOfWeek(for: $0.start)
+        var buckets: [Date: [CalendarEvent]] = [:]
+        for event in calendarStore.events {
+            for weekStart in event.occupiedWeekStarts {
+                buckets[weekStart, default: []].append(event)
+            }
         }
+        return buckets
     }
 
     private var completedEventIDs: Set<String> {
