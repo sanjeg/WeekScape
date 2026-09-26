@@ -88,6 +88,10 @@ enum CalendarConfig {
 final class CalendarStore {
     private let store = EKEventStore()
 
+    /// The backing store, needed by `EKEventViewController` to render an
+    /// event's detail page. Read-only use only — this app never writes events.
+    var eventStore: EKEventStore { store }
+
     /// Current calendar authorization for events.
     private(set) var authorizationStatus: EKAuthorizationStatus
 
