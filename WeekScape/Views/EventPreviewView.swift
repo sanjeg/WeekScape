@@ -4,17 +4,18 @@
 //
 //  The detail page for an imported calendar event. This wraps EventKitUI's
 //  `EKEventViewController`, so the user sees exactly what the Calendar app
-//  shows — attendees, alerts, recurrence, travel time, notes, and an Edit
-//  button — rather than a hand-rolled approximation.
+//  shows — times, location, recurrence, notes and attendees — rather than a
+//  hand-rolled approximation.
 //
 //  iOS has no public URL that opens a specific event in the Calendar app
 //  (`calshow:` only takes a time and lands on that day), so presenting
 //  Calendar's own UI in a sheet is how the real detail page is reached.
 //
-//  Editing is offered only for events the user can actually change. A
-//  subscribed calendar (a webcal feed, Holidays, Birthdays) reports
-//  `allowsContentModifications == false`, and offering Edit there would lead
-//  to a dead end — so the page stays view-only for those.
+//  The page is deliberately view-only. Turning on `allowsEditing` makes the
+//  controller render *two* separate Delete Event controls (`delete-event-cell`
+//  inside the card and `delete-event-button` below it), which there is no
+//  public way to collapse into one. Editing calendar events happens in the
+//  Calendar app.
 //
 
 import SwiftUI
@@ -27,25 +28,22 @@ struct EventPreviewView: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    /// Whether the event's calendar accepts changes. False for subscribed
-    /// feeds, Holidays and Birthdays, which are read-only at the source.
-    private var isEditable: Bool {
-        event.calendar?.allowsContentModifications ?? false
-    }
-
     var body: some View {
-        // No SwiftUI NavigationStack here on purpose: the controller brings its
-        // own UINavigationController, and Apple's Edit button lives in that
-        // bar. Wrapping this in a NavigationStack replaces the bar and the
-        // Edit button never appears, leaving title and date uneditable.
-        EventDetailController(
-            event: event,
-            eventStore: eventStore,
-            allowsEditing: isEditable
-        ) {
-            dismiss()
+        NavigationStack {
+            EventDetailController(event: event, eventStore: eventStore) {
+                dismiss()
+            }
+            .ignoresSafeArea()
+            .navigationTitle("Event")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
         }
-        .ignoresSafeArea()
     }
 }
 
@@ -55,32 +53,19 @@ struct EventPreviewView: View {
 private struct EventDetailController: UIViewControllerRepresentable {
     let event: EKEvent
     let eventStore: EKEventStore
-    let allowsEditing: Bool
     let onDone: () -> Void
 
-    func makeUIViewController(context: Context) -> UINavigationController {
+    func makeUIViewController(context: Context) -> EKEventViewController {
         let controller = EKEventViewController()
         controller.event = event
-        // Apple's Edit button pushes its own editor — the only way to change
-        // title, date and time. It is placed in the controller's own
-        // navigation bar, which is why a UINavigationController hosts it.
-        // Only surfaced when the source calendar accepts changes.
-        controller.allowsEditing = allowsEditing
+        controller.allowsEditing = false
         controller.allowsCalendarPreview = true
         controller.delegate = context.coordinator
-
-        // Our own dismissal, on the left so it doesn't collide with Edit.
-        controller.navigationItem.leftBarButtonItem = UIBarButtonItem(
-            systemItem: .done,
-            primaryAction: UIAction { [onDone] _ in onDone() }
-        )
-
-        return UINavigationController(rootViewController: controller)
+        return controller
     }
 
-    func updateUIViewController(_ nav: UINavigationController, context: Context) {
-        guard let controller = nav.viewControllers.first as? EKEventViewController else { return }
-        controller.allowsEditing = allowsEditing
+    func updateUIViewController(_ controller: EKEventViewController, context: Context) {
+        // The event is fixed for the lifetime of the sheet.
     }
 
     func makeCoordinator() -> Coordinator {
@@ -107,7 +92,6 @@ private struct EventDetailController: UIViewControllerRepresentable {
 private struct EventDetailController: View {
     let event: EKEvent
     let eventStore: EKEventStore
-    let allowsEditing: Bool
     let onDone: () -> Void
 
     var body: some View {

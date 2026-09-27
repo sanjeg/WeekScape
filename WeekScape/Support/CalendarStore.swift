@@ -3,10 +3,8 @@
 //  WeekScape
 //
 //  Bridges the app to the user's iPhone Calendar via EventKit. Events are shown
-//  alongside plans as reference data. This store itself only reads; the one
-//  path that can change calendar data is Apple's own editor, reached from the
-//  Edit button on an event's detail page, and only for calendars that accept
-//  changes (never a subscribed feed).
+//  as read-only reference data alongside plans, so this store only ever reads —
+//  it never creates, edits, or deletes calendar data.
 //
 //  Reading events requires *full* access (EventKit has no read-only level). The
 //  app targets iOS 26, so only the modern access API is used.
