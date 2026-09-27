@@ -2,70 +2,32 @@
 //  EventPreviewView.swift
 //  WeekScape
 //
-//  A read-only detail page for an imported calendar event, shown in a sheet so
-//  the event can be inspected without leaving WeekScape.
+//  The detail page for an imported calendar event. This wraps EventKitUI's
+//  `EKEventViewController`, so the user sees exactly what the Calendar app
+//  shows — attendees, alerts, recurrence, travel time, notes, and an Edit
+//  button — rather than a hand-rolled approximation.
 //
-//  Built in SwiftUI rather than with EventKitUI's `EKEventViewController`: that
-//  controller renders the Calendar row as a live picker which writes straight
-//  back to the user's calendar, even with `allowsEditing = false`. WeekScape is
-//  read-only toward the calendar, so the source calendar is shown as plain text
-//  and editing is handed off to the Calendar app through an explicit link.
+//  iOS has no public URL that opens a specific event in the Calendar app
+//  (`calshow:` only takes a time and lands on that day), so presenting
+//  Calendar's own UI in a sheet is how the real detail page is reached.
 //
 
 import SwiftUI
 import EventKit
+import EventKitUI
 
 struct EventPreviewView: View {
     let event: EKEvent
+    let eventStore: EKEventStore
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    HStack(spacing: Theme.spacing3) {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(calendarColor)
-                            .frame(width: 4, height: 34)
-                        Text(title)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.primary)
-                    }
-                    .padding(.vertical, Theme.spacing1)
-                }
-
-                Section {
-                    LabeledContent("When", value: whenText)
-                    if let location = event.location, !location.isEmpty {
-                        LabeledContent("Location", value: location)
-                    }
-                    calendarRow
-                }
-
-                if let notes = event.notes?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !notes.isEmpty {
-                    Section("Notes") {
-                        Text(notes)
-                    }
-                }
-
-                if let url = event.url {
-                    Section {
-                        Link(destination: url) {
-                            Text(url.absoluteString)
-                                .lineLimit(1)
-                        }
-                    }
-                }
-
-                Section {
-                    openInCalendarRow
-                } footer: {
-                    Text("WeekScape never changes your calendar. Open the event in Calendar to edit it.")
-                }
+            EventDetailController(event: event, eventStore: eventStore) {
+                dismiss()
             }
+            .ignoresSafeArea()
             .navigationTitle("Event")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -77,102 +39,69 @@ struct EventPreviewView: View {
             }
         }
     }
+}
 
-    // MARK: - Rows
+#if os(iOS)
 
-    /// Which calendar the event came from — static text, so the source calendar
-    /// can be seen but never reassigned from here.
-    private var calendarRow: some View {
-        HStack {
-            Text("Calendar")
-                .foregroundStyle(.primary)
-            Spacer()
-            Circle()
-                .fill(calendarColor)
-                .frame(width: 10, height: 10)
-            Text(calendarText)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.trailing)
+/// Hosts `EKEventViewController`, which renders Calendar's event detail page.
+private struct EventDetailController: UIViewControllerRepresentable {
+    let event: EKEvent
+    let eventStore: EKEventStore
+    let onDone: () -> Void
+
+    func makeUIViewController(context: Context) -> EKEventViewController {
+        let controller = EKEventViewController()
+        controller.event = event
+        // Editing writes to the user's calendar; WeekScape stays read-only, so
+        // the detail page is presented for viewing only.
+        controller.allowsEditing = false
+        controller.allowsCalendarPreview = true
+        controller.delegate = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ controller: EKEventViewController, context: Context) {
+        // The event is fixed for the lifetime of the sheet.
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onDone: onDone)
+    }
+
+    final class Coordinator: NSObject, EKEventViewDelegate {
+        private let onDone: () -> Void
+
+        init(onDone: @escaping () -> Void) {
+            self.onDone = onDone
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Calendar: \(calendarText)")
-    }
 
-    /// Explicit hand-off for editing, kept separate from the calendar row so
-    /// tapping the source calendar can't be mistaken for changing it.
-    private var openInCalendarRow: some View {
-        Button(action: openInCalendar) {
-            HStack {
-                Label("Open in Calendar", systemImage: "calendar")
-                Spacer()
-                Image(systemName: "arrow.up.forward")
-                    .font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(.tint)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint("Opens the Calendar app on this event's day")
-    }
-
-    // MARK: - Derived values
-
-    private var title: String {
-        let trimmed = event.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmed.isEmpty ? "(No title)" : trimmed
-    }
-
-    private var calendarColor: Color {
-        event.calendar.map { Color(cgColor: $0.cgColor) } ?? .secondary
-    }
-
-    /// "Account Name - Calendar Name", falling back to just the calendar name
-    /// when the source has no title.
-    private var calendarText: String {
-        guard let calendar = event.calendar else { return "—" }
-        let account = calendar.source.title
-        return account.isEmpty ? calendar.title : "\(account) - \(calendar.title)"
-    }
-
-    private var whenText: String {
-        let start = event.startDate ?? .now
-        if event.isAllDay {
-            // Same end-date interpretation the week cards use, so the badge and
-            // this row can't disagree about the final day.
-            let lastDay = EventSpan.lastDay(start: start, end: event.endDate ?? start)
-            if WeekConfig.calendar.isDate(start, inSameDayAs: lastDay) {
-                return "\(start.formatted(date: .abbreviated, time: .omitted)) · All day"
-            }
-            let from = start.formatted(date: .abbreviated, time: .omitted)
-            let to = lastDay.formatted(date: .abbreviated, time: .omitted)
-            return "\(from) – \(to) · All day"
-        }
-        let end = event.endDate ?? start
-        if Calendar.current.isDate(start, inSameDayAs: end) {
-            let day = start.formatted(date: .abbreviated, time: .omitted)
-            let from = start.formatted(date: .omitted, time: .shortened)
-            let to = end.formatted(date: .omitted, time: .shortened)
-            return "\(day) · \(from) – \(to)"
-        }
-        let from = start.formatted(date: .abbreviated, time: .shortened)
-        let to = end.formatted(date: .abbreviated, time: .shortened)
-        return "\(from) – \(to)"
-    }
-
-    // MARK: - Actions
-
-    /// Hand off to the Calendar app, landing on the event's day.
-    ///
-    /// `calshow:` takes seconds since the reference date and opens the day
-    /// view at that moment, which is as close as iOS lets a third-party app
-    /// get — there is no public URL that selects a specific event. The exact
-    /// start time is passed (rather than midnight) so a timed event lands at
-    /// its own hour rather than the top of the day.
-    private func openInCalendar() {
-        let target = event.startDate ?? .now
-        let seconds = target.timeIntervalSinceReferenceDate
-        if let url = URL(string: "calshow:\(Int(seconds))") {
-            openURL(url)
+        func eventViewController(_ controller: EKEventViewController,
+                                 didCompleteWith action: EKEventViewAction) {
+            onDone()
         }
     }
 }
+
+#else
+
+/// macOS has no EventKitUI; fall back to a minimal read-only summary.
+private struct EventDetailController: View {
+    let event: EKEvent
+    let eventStore: EKEventStore
+    let onDone: () -> Void
+
+    var body: some View {
+        List {
+            Text(event.title ?? "(No title)")
+                .font(.title3.weight(.semibold))
+            if let start = event.startDate {
+                LabeledContent("When", value: start.formatted(date: .abbreviated, time: .shortened))
+            }
+            if let notes = event.notes, !notes.isEmpty {
+                Section("Notes") { Text(notes) }
+            }
+        }
+    }
+}
+
+#endif

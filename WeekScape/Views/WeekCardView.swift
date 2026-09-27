@@ -341,7 +341,7 @@ private struct CalendarEventRow: View {
     var body: some View {
         rowContent
             .sheet(item: $previewItem) { item in
-                EventPreviewView(event: item.event)
+                EventPreviewView(event: item.event, eventStore: calendarStore.eventStore)
             }
     }
 
