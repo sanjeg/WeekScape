@@ -17,7 +17,7 @@ import Observation
 
 /// A lightweight, value-type snapshot of an `EKEvent` for display. Not persisted;
 /// rebuilt on every fetch so it always reflects the live calendar.
-struct CalendarEvent: Identifiable, Hashable {
+struct CalendarEvent: Identifiable, Hashable, Sendable {
     let id: String
     /// Raw EventKit identifier, used to resolve the live `EKEvent` for preview.
     let eventIdentifier: String
@@ -27,7 +27,7 @@ struct CalendarEvent: Identifiable, Hashable {
     let isAllDay: Bool
     let color: Color
 
-    init(_ event: EKEvent) {
+    nonisolated init(_ event: EKEvent) {
         // Recurring events share an identifier across occurrences, so fold the
         // occurrence start into the id to keep each instance unique.
         let base = event.eventIdentifier ?? event.calendarItemIdentifier
@@ -93,7 +93,7 @@ final class CalendarStore {
     var eventStore: EKEventStore { store }
 
     /// Current calendar authorization for events.
-    private(set) var authorizationStatus: EKAuthorizationStatus
+    private(set) var authorizationStatus: EKAuthorizationStatus = .notDetermined
 
     /// Events for the most recently requested window (empty unless the feature
     /// is enabled and the app is authorized).
@@ -101,6 +101,11 @@ final class CalendarStore {
 
     /// The last window we loaded, so change notifications can re-fetch it.
     private var lastWindow: DateInterval?
+
+    /// Bumped on every `reload`, so a slower, superseded fetch can detect it
+    /// finished out of order and discard its result instead of overwriting
+    /// a newer one.
+    private var fetchGeneration = 0
 
     /// Whether the user has opted in to showing calendar events.
     var showEvents: Bool {
@@ -121,21 +126,35 @@ final class CalendarStore {
     }
 
     init() {
-        self.authorizationStatus = EKEventStore.authorizationStatus(for: .event)
         self.showEvents = UserDefaults.standard.bool(forKey: CalendarConfig.showEventsKey)
         let stored = UserDefaults.standard.stringArray(forKey: CalendarConfig.selectedCalendarIDsKey) ?? []
         self.selectedCalendarIDs = Set(stored)
+
+        Task {
+            await refreshAuthorizationStatus()
+        }
     }
 
     // MARK: - Authorization
 
     private var isAuthorized: Bool { authorizationStatus == .fullAccess }
 
+    /// Refresh calendar authorization status off the main thread.
+    func refreshAuthorizationStatus() async {
+        let status = await Task.detached {
+            EKEventStore.authorizationStatus(for: .event)
+        }.value
+        if self.authorizationStatus != status {
+            self.authorizationStatus = status
+            reloadLastWindow()
+        }
+    }
+
     /// Prompt for full access to events. Returns whether access was granted.
     /// On first grant with no saved selection, defaults to including every calendar.
     func requestAccess() async -> Bool {
         let granted = (try? await store.requestFullAccessToEvents()) ?? false
-        authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+        await refreshAuthorizationStatus()
         if granted, selectedCalendarIDs.isEmpty {
             selectedCalendarIDs = Set(availableCalendars().map(\.calendarIdentifier))
         }
@@ -155,27 +174,42 @@ final class CalendarStore {
     /// list when the feature is off or the app isn't authorized.
     func reload(window: DateInterval) {
         lastWindow = window
+        fetchGeneration += 1
+        let generation = fetchGeneration
+
         guard showEvents, isAuthorized else {
             events = []
             return
         }
 
-        let calendars = store.calendars(for: .event)
-            .filter { selectedCalendarIDs.contains($0.calendarIdentifier) }
-        // No calendars selected means nothing to show.
-        guard !calendars.isEmpty else {
-            events = []
-            return
-        }
+        let store = self.store
+        let selectedIDs = self.selectedCalendarIDs
 
-        let predicate = store.predicateForEvents(
-            withStart: window.start,
-            end: window.end,
-            calendars: calendars
-        )
-        events = store.events(matching: predicate)
-            .map(CalendarEvent.init)
-            .sorted { $0.start < $1.start }
+        Task.detached {
+            let calendars = store.calendars(for: .event)
+                .filter { selectedIDs.contains($0.calendarIdentifier) }
+            guard !calendars.isEmpty else {
+                await MainActor.run {
+                    guard generation == self.fetchGeneration else { return }
+                    self.events = []
+                }
+                return
+            }
+
+            let predicate = store.predicateForEvents(
+                withStart: window.start,
+                end: window.end,
+                calendars: calendars
+            )
+            let fetchedEvents = store.events(matching: predicate)
+                .map { CalendarEvent($0) }
+                .sorted { $0.start < $1.start }
+
+            await MainActor.run {
+                guard generation == self.fetchGeneration else { return }
+                self.events = fetchedEvents
+            }
+        }
     }
 
     private func reloadLastWindow() {
@@ -188,15 +222,35 @@ final class CalendarStore {
     /// identifier across occurrences, so the start date disambiguates them.
     func resolveEvent(_ snapshot: CalendarEvent) -> EKEvent? {
         guard isAuthorized else { return nil }
-        let calendar = Calendar.current
-        let dayStart = calendar.startOfDay(for: snapshot.start)
-        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? snapshot.end
-        let predicate = store.predicateForEvents(withStart: dayStart, end: dayEnd, calendars: nil)
-        let occurrence = store.events(matching: predicate).first {
-            $0.eventIdentifier == snapshot.eventIdentifier
-                && abs($0.startDate.timeIntervalSince(snapshot.start)) < 1
+
+        // 1. Try direct event lookup by eventIdentifier
+        if let direct = store.event(withIdentifier: snapshot.eventIdentifier) {
+            return direct
         }
-        return occurrence ?? store.event(withIdentifier: snapshot.eventIdentifier)
+
+        // 2. Try direct calendar item lookup
+        if let item = store.calendarItem(withIdentifier: snapshot.eventIdentifier) as? EKEvent {
+            return item
+        }
+
+        // 3. Fall back to predicate search covering the snapshot's full start...end range.
+        let calendar = Calendar.current
+        let rangeStart = calendar.startOfDay(for: snapshot.start)
+        let rangeEnd = max(snapshot.end, calendar.date(byAdding: .day, value: 1, to: rangeStart) ?? snapshot.end)
+
+        let predicate = store.predicateForEvents(withStart: rangeStart, end: rangeEnd, calendars: nil)
+        let matching = store.events(matching: predicate)
+
+        if let exact = matching.first(where: {
+            ($0.eventIdentifier == snapshot.eventIdentifier || $0.calendarItemIdentifier == snapshot.eventIdentifier)
+                && abs($0.startDate.timeIntervalSince(snapshot.start)) < 60
+        }) {
+            return exact
+        }
+
+        return matching.first {
+            $0.eventIdentifier == snapshot.eventIdentifier || $0.calendarItemIdentifier == snapshot.eventIdentifier
+        }
     }
 
     // MARK: - Live updates
@@ -204,9 +258,10 @@ final class CalendarStore {
     /// Watch for external calendar changes and re-fetch the current window.
     /// Runs until the surrounding `.task` is cancelled.
     func observeChanges() async {
+        await refreshAuthorizationStatus()
         let notifications = NotificationCenter.default.notifications(named: .EKEventStoreChanged)
         for await _ in notifications {
-            authorizationStatus = EKEventStore.authorizationStatus(for: .event)
+            await refreshAuthorizationStatus()
             reloadLastWindow()
         }
     }

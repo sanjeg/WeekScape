@@ -27,6 +27,12 @@ struct EventPreviewView: View {
     let eventStore: EKEventStore
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+
+    private var calendarURL: URL? {
+        guard let startDate = event.startDate else { return nil }
+        return URL(string: "calshow:\(startDate.timeIntervalSinceReferenceDate)")
+    }
 
     var body: some View {
         NavigationStack {
@@ -41,6 +47,15 @@ struct EventPreviewView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    if let url = calendarURL {
+                        Button {
+                            openURL(url)
+                        } label: {
+                            Label("Open in Calendar", systemImage: "calendar")
+                        }
+                    }
                 }
             }
         }

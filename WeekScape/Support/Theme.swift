@@ -9,6 +9,31 @@
 
 import SwiftUI
 
+/// User-selected color scheme mode (System, Light, Dark).
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system = "system"
+    case light = "light"
+    case dark = "dark"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
 enum Theme {
     // Spacing scale
     static let spacing1: CGFloat = 4
@@ -20,6 +45,9 @@ enum Theme {
     // Corner radii
     static let cardRadius: CGFloat = 20
     static let rowRadius: CGFloat = 14
+
+    // App storage keys
+    static let appearanceKey = "appAppearance"
 
     /// Share of the stream's height the pinned Wishlist card's rows may occupy
     /// before they scroll inside the card, so it never takes over the screen.

@@ -19,6 +19,7 @@ struct SettingsView: View {
 
     @AppStorage(WeekConfig.firstWeekdayKey) private var firstWeekday: Int = 2
     @AppStorage(WeekConfig.weeksAheadKey) private var weeksAhead: Int = WeekConfig.defaultWeeksAhead
+    @AppStorage(Theme.appearanceKey) private var appearance: AppAppearance = .system
 
     /// Drives the destructive "Reset App" confirmation.
     @State private var showingResetConfirmation = false
@@ -40,6 +41,17 @@ struct SettingsView: View {
                     Text("Week")
                 } footer: {
                     Text("How many future weeks appear when the app opens. You can always load more with “More weeks”.")
+                }
+
+                Section {
+                    Picker("Appearance", selection: $appearance) {
+                        ForEach(AppAppearance.allCases) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("Appearance")
                 }
 
                 calendarSection
@@ -95,6 +107,7 @@ struct SettingsView: View {
                 Text("This permanently deletes all of your plans and settings and restores WeekScape to its original state. This can't be undone.")
             }
         }
+        .preferredColorScheme(appearance.colorScheme)
     }
 
     /// Wipe all data and preferences, then close Settings so the fresh state
@@ -104,6 +117,7 @@ struct SettingsView: View {
         // observable store rather than being re-read from UserDefaults.
         calendarStore.showEvents = false
         calendarStore.selectedCalendarIDs = []
+        appearance = .system
         SampleData.resetToFreshInstall(in: context)
         dismiss()
     }

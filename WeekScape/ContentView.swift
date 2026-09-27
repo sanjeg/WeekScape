@@ -21,6 +21,9 @@ struct ContentView: View {
     /// One-time onboarding flag. Bumped if the intro copy changes materially.
     @AppStorage(SampleData.onboardingKey) private var didCompleteOnboarding = false
 
+    /// User-selected appearance (system, light, dark).
+    @AppStorage(Theme.appearanceKey) private var appearance: AppAppearance = .system
+
     /// Owns the EventKit bridge for the whole scene so the week stream and
     /// Settings share one source of truth.
     @State private var calendarStore = CalendarStore()
@@ -63,6 +66,7 @@ struct ContentView: View {
                     .plainToolbarBackground()
                 }
         }
+        .preferredColorScheme(appearance.colorScheme)
         .environment(calendarStore)
         .sheet(isPresented: $showingSettings) {
             SettingsView()
