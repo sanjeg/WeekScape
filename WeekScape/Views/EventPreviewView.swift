@@ -34,25 +34,18 @@ struct EventPreviewView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            EventDetailController(
-                event: event,
-                eventStore: eventStore,
-                allowsEditing: isEditable
-            ) {
-                dismiss()
-            }
-            .ignoresSafeArea()
-            .navigationTitle("Event")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
+        // No SwiftUI NavigationStack here on purpose: the controller brings its
+        // own UINavigationController, and Apple's Edit button lives in that
+        // bar. Wrapping this in a NavigationStack replaces the bar and the
+        // Edit button never appears, leaving title and date uneditable.
+        EventDetailController(
+            event: event,
+            eventStore: eventStore,
+            allowsEditing: isEditable
+        ) {
+            dismiss()
         }
+        .ignoresSafeArea()
     }
 }
 
@@ -65,18 +58,28 @@ private struct EventDetailController: UIViewControllerRepresentable {
     let allowsEditing: Bool
     let onDone: () -> Void
 
-    func makeUIViewController(context: Context) -> EKEventViewController {
+    func makeUIViewController(context: Context) -> UINavigationController {
         let controller = EKEventViewController()
         controller.event = event
-        // Apple's Edit button pushes its own editor, which also offers Delete.
+        // Apple's Edit button pushes its own editor — the only way to change
+        // title, date and time. It is placed in the controller's own
+        // navigation bar, which is why a UINavigationController hosts it.
         // Only surfaced when the source calendar accepts changes.
         controller.allowsEditing = allowsEditing
         controller.allowsCalendarPreview = true
         controller.delegate = context.coordinator
-        return controller
+
+        // Our own dismissal, on the left so it doesn't collide with Edit.
+        controller.navigationItem.leftBarButtonItem = UIBarButtonItem(
+            systemItem: .done,
+            primaryAction: UIAction { [onDone] _ in onDone() }
+        )
+
+        return UINavigationController(rootViewController: controller)
     }
 
-    func updateUIViewController(_ controller: EKEventViewController, context: Context) {
+    func updateUIViewController(_ nav: UINavigationController, context: Context) {
+        guard let controller = nav.viewControllers.first as? EKEventViewController else { return }
         controller.allowsEditing = allowsEditing
     }
 
