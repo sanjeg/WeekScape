@@ -15,6 +15,25 @@ import EventKit
 import SwiftUI
 import Observation
 
+/// The one place that interprets an event's end date.
+///
+/// EventKit is inconsistent about all-day events depending on the source: some
+/// report an exclusive end (midnight on the day *after* the last day), others
+/// report the end of the last day itself. Both must collapse to the same
+/// inclusive last day, or a one-day event reads as two and a span comes up a
+/// day short.
+enum EventSpan {
+    static func lastDay(start: Date, end: Date) -> Date {
+        let calendar = WeekConfig.calendar
+        let firstDay = calendar.startOfDay(for: start)
+        var effectiveEnd = end
+        if effectiveEnd > start, effectiveEnd == calendar.startOfDay(for: effectiveEnd) {
+            effectiveEnd = effectiveEnd.addingTimeInterval(-1)
+        }
+        return max(calendar.startOfDay(for: effectiveEnd), firstDay)
+    }
+}
+
 /// A lightweight, value-type snapshot of an `EKEvent` for display. Not persisted;
 /// rebuilt on every fetch so it always reflects the live calendar.
 struct CalendarEvent: Identifiable, Hashable {
@@ -51,18 +70,8 @@ struct CalendarEvent: Identifiable, Hashable {
     }
 
     /// The last day the event occupies, inclusive.
-    ///
-    /// EventKit stores an exclusive end: an all-day event on Sep 12 ends at
-    /// midnight on Sep 13, and a timed event can likewise run to midnight.
-    /// Stepping back off an exact midnight keeps a one-day event from counting
-    /// as two.
     var lastDay: Date {
-        let calendar = WeekConfig.calendar
-        var effectiveEnd = end
-        if effectiveEnd > start, effectiveEnd == calendar.startOfDay(for: effectiveEnd) {
-            effectiveEnd = effectiveEnd.addingTimeInterval(-1)
-        }
-        return max(calendar.startOfDay(for: effectiveEnd), firstDay)
+        EventSpan.lastDay(start: start, end: end)
     }
 
     /// True when the event covers more than one day.
@@ -87,10 +96,6 @@ enum CalendarConfig {
 @Observable
 final class CalendarStore {
     private let store = EKEventStore()
-
-    /// The backing store, needed by `EKEventViewController` to render an
-    /// event's detail page. Read-only use only — this app never writes events.
-    var eventStore: EKEventStore { store }
 
     /// Current calendar authorization for events.
     private(set) var authorizationStatus: EKAuthorizationStatus
