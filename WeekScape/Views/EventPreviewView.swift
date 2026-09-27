@@ -11,6 +11,11 @@
 //  (`calshow:` only takes a time and lands on that day), so presenting
 //  Calendar's own UI in a sheet is how the real detail page is reached.
 //
+//  Editing is offered only for events the user can actually change. A
+//  subscribed calendar (a webcal feed, Holidays, Birthdays) reports
+//  `allowsContentModifications == false`, and offering Edit there would lead
+//  to a dead end — so the page stays view-only for those.
+//
 
 import SwiftUI
 import EventKit
@@ -22,9 +27,19 @@ struct EventPreviewView: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// Whether the event's calendar accepts changes. False for subscribed
+    /// feeds, Holidays and Birthdays, which are read-only at the source.
+    private var isEditable: Bool {
+        event.calendar?.allowsContentModifications ?? false
+    }
+
     var body: some View {
         NavigationStack {
-            EventDetailController(event: event, eventStore: eventStore) {
+            EventDetailController(
+                event: event,
+                eventStore: eventStore,
+                allowsEditing: isEditable
+            ) {
                 dismiss()
             }
             .ignoresSafeArea()
@@ -47,21 +62,22 @@ struct EventPreviewView: View {
 private struct EventDetailController: UIViewControllerRepresentable {
     let event: EKEvent
     let eventStore: EKEventStore
+    let allowsEditing: Bool
     let onDone: () -> Void
 
     func makeUIViewController(context: Context) -> EKEventViewController {
         let controller = EKEventViewController()
         controller.event = event
-        // Editing writes to the user's calendar; WeekScape stays read-only, so
-        // the detail page is presented for viewing only.
-        controller.allowsEditing = false
+        // Apple's Edit button pushes its own editor, which also offers Delete.
+        // Only surfaced when the source calendar accepts changes.
+        controller.allowsEditing = allowsEditing
         controller.allowsCalendarPreview = true
         controller.delegate = context.coordinator
         return controller
     }
 
     func updateUIViewController(_ controller: EKEventViewController, context: Context) {
-        // The event is fixed for the lifetime of the sheet.
+        controller.allowsEditing = allowsEditing
     }
 
     func makeCoordinator() -> Coordinator {
@@ -88,6 +104,7 @@ private struct EventDetailController: UIViewControllerRepresentable {
 private struct EventDetailController: View {
     let event: EKEvent
     let eventStore: EKEventStore
+    let allowsEditing: Bool
     let onDone: () -> Void
 
     var body: some View {

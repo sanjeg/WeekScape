@@ -5,7 +5,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>WeekScape shows your Calendar events alongside your weekly plans.</string>
+	<string>WeekScape shows your Calendar events alongside your weekly plans, and lets you edit an event you tap on.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
