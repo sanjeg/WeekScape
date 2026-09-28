@@ -39,6 +39,10 @@ struct WeekListView: View {
     /// Guards the one-time launch scroll that parks the current week on top.
     @State private var didInitialScroll = false
 
+    /// True once the user has touched the stream. Stops the settle-phase
+    /// re-pinning below so a manual pull-down isn't fought by it.
+    @State private var userInteracted = false
+
     /// Anchor id for the very top of the stream.
     private let topAnchorID = "stream-top"
 
@@ -220,6 +224,17 @@ struct WeekListView: View {
                     proxy.scrollTo(currentWeekID, anchor: .top)
                 }
             }
+            // Plans and calendar events can each finish an async load (a
+            // slow CloudKit merge, an EventKit fetch) a beat after the scroll
+            // above, adding height to the weeks above the current one and
+            // nudging it back down. Re-pin on those specific changes rather
+            // than a blind timer — and stop the instant the user actually
+            // touches the stream, so a manual pull-down isn't fought.
+            .onChange(of: allPlans.count) { rescrollToCurrentWeek(proxy) }
+            .onChange(of: calendarStore.events.count) { rescrollToCurrentWeek(proxy) }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0).onChanged { _ in userInteracted = true }
+            )
         }
         .sheet(item: $editorState) { state in
             PlanEditorView(state: state)
@@ -289,6 +304,15 @@ struct WeekListView: View {
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.spacing1)
+    }
+
+    /// Re-pin the current week to the top during the launch settle window,
+    /// unless the user has already started scrolling by hand.
+    private func rescrollToCurrentWeek(_ proxy: ScrollViewProxy) {
+        guard didInitialScroll, !userInteracted, let currentWeekID else { return }
+        Task { @MainActor in
+            proxy.scrollTo(currentWeekID, anchor: .top)
+        }
     }
 
     /// Collapse the earlier-weeks expansion and land at the top of the stream.
